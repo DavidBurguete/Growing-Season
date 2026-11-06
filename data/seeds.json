@@ -1,0 +1,31 @@
+{
+  "_doc": "Cartas de semillas. 'waterRewards' son las monedas que da cada estado de riego, de ABAJO a ARRIBA, sin contar el círculo superior (el de la hoz). 'harvest' es el círculo de la hoz: se cobra solo al cosechar. Nº de círculos (riegos necesarios) = waterRewards.length + 1. 'starter': carta inicial (no está en la tienda).",
+  "cards": [
+    { "id": "wheat-2",      "name": "Trigo de 2",  "image": "assets/img/seeds/starting-wheat-2.png", "cost": 0, "count": 1, "starter": true, "waterRewards": [0], "harvest": 2 },
+    { "id": "wheat-3",      "name": "Trigo de 3",  "image": "assets/img/seeds/starting-wheat-3.png", "cost": 0, "count": 1, "starter": true, "waterRewards": [0], "harvest": 3 },
+    { "id": "carrots",      "name": "Zanahorias",  "image": "assets/img/seeds/carrots.png",      "cost": 2, "count": 4, "waterRewards": [0, 0], "harvest": 5 },
+    { "id": "grapes",       "name": "Uvas",        "image": "assets/img/seeds/blueberries.png",  "cost": 2, "count": 4, "waterRewards": [1, 1], "harvest": 2 },
+    { "id": "tomatoes",     "name": "Tomates",     "image": "assets/img/seeds/tomatoes.png",     "cost": 2, "count": 4, "waterRewards": [0, 2, 2], "harvest": 2 },
+    { "id": "watermelon",   "name": "Sandías",     "image": "assets/img/seeds/watermelon.png",   "cost": 2, "count": 3, "waterRewards": [0, 0, 0, 0], "harvest": 7 },
+    { "id": "radish",       "name": "Rábanos",     "image": "assets/img/seeds/radish.png",       "cost": 1, "count": 4, "waterRewards": [0], "harvest": 2 },
+    { "id": "bananas",      "name": "Plátanos",    "image": "assets/img/seeds/bananas.png",      "cost": 2, "count": 2, "waterRewards": [0, 0, 0, 3, 3], "harvest": 3 },
+    { "id": "pineapple",    "name": "Piñas",       "image": "assets/img/seeds/pineapple.png",    "cost": 2, "count": 3, "waterRewards": [0, 0, 1, 2], "harvest": 5 },
+    { "id": "peppers",      "name": "Pimientos",   "image": "assets/img/seeds/peppers.png",      "cost": 3, "count": 3, "waterRewards": [0, 0, 0, 0], "harvest": 9 },
+    { "id": "potatoes",     "name": "Patatas",     "image": "assets/img/seeds/potatoes.png",     "cost": 3, "count": 3, "waterRewards": [0, 0, 4, 0], "harvest": 4 },
+    { "id": "turnip",       "name": "Nabos",       "image": "assets/img/seeds/turnip.png",       "cost": 2, "count": 4, "waterRewards": [0, 0], "harvest": 4 },
+    { "id": "melon",        "name": "Melones",     "image": "assets/img/seeds/melon.png",        "cost": 2, "count": 4, "waterRewards": [0, 0, 0], "harvest": 7 },
+    { "id": "apples",       "name": "Manzanas",    "image": "assets/img/seeds/apples.png",       "cost": 1, "count": 4, "waterRewards": [0, 1], "harvest": 3 },
+    { "id": "mango",        "name": "Mangos",      "image": "assets/img/seeds/mango.png",        "cost": 3, "count": 2, "waterRewards": [0, 0, 0, 0, 0], "harvest": 10 },
+    { "id": "corn",         "name": "Maíces",      "image": "assets/img/seeds/corn.png",         "cost": 3, "count": 3, "waterRewards": [0, 2, 2, 2], "harvest": 2 },
+    { "id": "lemon",        "name": "Limones",     "image": "assets/img/seeds/lemon.png",        "cost": 3, "count": 2, "waterRewards": [0, 2, 0, 2, 0], "harvest": 6 },
+    { "id": "lettuce",      "name": "Lechugas",    "image": "assets/img/seeds/lettuce.png",      "cost": 1, "count": 4, "waterRewards": [0, 0, 2], "harvest": 4 },
+    { "id": "beans",        "name": "Alubias",     "image": "assets/img/seeds/beans.png",        "cost": 2, "count": 4, "waterRewards": [2], "harvest": 2 },
+    { "id": "strawberries", "name": "Fresas",      "image": "assets/img/seeds/strawberries.png", "cost": 2, "count": 4, "waterRewards": [0, 2], "harvest": 2 },
+    { "id": "cauliflower",  "name": "Coliflores",  "image": "assets/img/seeds/cauliflower.png",  "cost": 2, "count": 4, "waterRewards": [0, 0, 0], "harvest": 6 },
+    { "id": "pumpkin",      "name": "Calabazas",   "image": "assets/img/seeds/pumpkin.png",      "cost": 2, "count": 2, "waterRewards": [0, 0, 0, 0], "harvest": 8 },
+    { "id": "coffee",       "name": "Café",        "image": "assets/img/seeds/coffee-beans.png", "cost": 4, "count": 2, "waterRewards": [1, 1, 2, 4, 2], "harvest": 2 },
+    { "id": "broccoli",     "name": "Brócolis",    "image": "assets/img/seeds/broccoli.png",     "cost": 3, "count": 3, "waterRewards": [0], "harvest": 5 },
+    { "id": "eggplant",     "name": "Berenjenas",  "image": "assets/img/seeds/eggplant.png",     "cost": 2, "count": 4, "waterRewards": [0, 3, 0], "harvest": 3 },
+    { "id": "garlic",       "name": "Ajos",        "image": "assets/img/seeds/onion.png",        "cost": 1, "count": 4, "waterRewards": [0], "harvest": 3 }
+  ]
+}

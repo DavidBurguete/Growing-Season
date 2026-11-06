@@ -1,0 +1,19 @@
+{
+  "_doc": "Cartas de mina. 'coins' = monedas que da al revelarse (0 = vacía).",
+  "cards": [
+    { "id": "mine-rojo-0",   "image": "assets/img/mining/0-coin-red-guy.png",     "colors": ["rojo"],   "coins": 0, "count": 2 },
+    { "id": "mine-rosa-0",   "image": "assets/img/mining/0-coin-blue-girl.png",   "colors": ["rosa"],   "coins": 0, "count": 2 },
+    { "id": "mine-verde-0",  "image": "assets/img/mining/0-coin-yellow-guy.png",  "colors": ["verde"],  "coins": 0, "count": 2 },
+    { "id": "mine-morado-0", "image": "assets/img/mining/0-coin-purple-girl.png", "colors": ["morado"], "coins": 0, "count": 2 },
+    { "id": "mine-rojo-1",   "image": "assets/img/mining/1-coin-red-guy.png",     "colors": ["rojo"],   "coins": 1, "count": 2 },
+    { "id": "mine-rosa-1",   "image": "assets/img/mining/1-coin-blue-girl.png",   "colors": ["rosa"],   "coins": 1, "count": 1 },
+    { "id": "mine-verde-1",  "image": "assets/img/mining/1-coin-yellow-guy.png",  "colors": ["verde"],  "coins": 1, "count": 1 },
+    { "id": "mine-morado-1", "image": "assets/img/mining/1-coin-purple-girl.png", "colors": ["morado"], "coins": 1, "count": 2 },
+    { "id": "mine-rojo-2",   "image": "assets/img/mining/2-coin-red-guy.png",     "colors": ["rojo"],   "coins": 2, "count": 1 },
+    { "id": "mine-rosa-2",   "image": "assets/img/mining/2-coin-blue-girl.png",   "colors": ["rosa"],   "coins": 2, "count": 1 },
+    { "id": "mine-verde-2",  "image": "assets/img/mining/2-coin-yellow-guy.png",  "colors": ["verde"],  "coins": 2, "count": 1 },
+    { "id": "mine-morado-2", "image": "assets/img/mining/2-coin-purple-girl.png", "colors": ["morado"], "coins": 2, "count": 1 },
+    { "id": "mine-rr-3",     "image": "assets/img/mining/3-coin-red-blue.png",      "colors": ["rojo", "rosa"],    "coins": 3, "count": 1 },
+    { "id": "mine-vm-3",     "image": "assets/img/mining/3-coin-purple-yellow.png", "colors": ["verde", "morado"], "coins": 3, "count": 1 }
+  ]
+}

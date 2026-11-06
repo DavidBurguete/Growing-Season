@@ -1,0 +1,22 @@
+{
+  "_doc": "Parámetros generales de la partida (modo 2 jugadores).",
+  "startingCoins": 0,
+  "handSize": 5,
+  "basePlots": 3,
+  "maxPlots": 6,
+  "coinsPerBoardSpace": 10,
+  "mineCardsPerTrip": 2,
+  "mineCardsPerTripWithEquipment": 1,
+  "market": { "seeds": 5, "tools": 3, "farm": 3 },
+  "board": [
+    { "barn": true }, { "barn": true }, { "barn": true }, { "barn": false }, { "barn": true },
+    { "barn": true }, { "barn": false }, { "barn": true }, { "barn": false }, { "barn": false }
+  ],
+  "starterSeeds": ["wheat-2", "wheat-3"],
+  "colors": {
+    "rojo":   { "label": "Rojo",   "hex": "#d8402f" },
+    "rosa":   { "label": "Rosa",   "hex": "#e46fa8" },
+    "morado": { "label": "Morado", "hex": "#7e3fb0" },
+    "verde":  { "label": "Verde",  "hex": "#4aa53a" }
+  }
+}
