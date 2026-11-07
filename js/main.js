@@ -1,5 +1,8 @@
 import { Game } from './game.js';
-import { renderAll, showDialog, hideDialog, setupDialogHtml, replaceDialogHtml, gameOverHtml } from './render.js';
+import {
+  renderAll, showDialog, hideDialog, setupDialogHtml, replaceDialogHtml,
+  harvestStoreDialogHtml, warehouseDialogHtml, gameOverHtml,
+} from './render.js';
 
 const DATA_FILES = {
   config: 'data/config.json',
@@ -9,6 +12,7 @@ const DATA_FILES = {
   mine: 'data/mine.json',
 };
 
+const W = 1920, H = 923;
 let data;
 let game;
 let lastSetup = [
@@ -25,14 +29,23 @@ async function loadData() {
   return Object.fromEntries(entries);
 }
 
-// ---------- escalado del lienzo ----------
+// ---------- escalado ----------
+// El tablero de juego se escala para caber entero; el fondo se escala para cubrir
+// toda la ventana, pegado abajo (la hierba siempre se ve y el cielo se recorta).
 
-function fitStage() {
+function fit() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const s = Math.min(vw / W, vh / H);
   const stage = document.getElementById('stage');
-  const s = Math.min(window.innerWidth / 1920, window.innerHeight / 923);
   stage.style.transform = `scale(${s})`;
-  stage.style.left = `${(window.innerWidth - 1920 * s) / 2}px`;
-  stage.style.top = `${(window.innerHeight - 923 * s) / 2}px`;
+  stage.style.left = `${(vw - W * s) / 2}px`;
+  stage.style.top = `${(vh - H * s) / 2}px`;
+
+  const c = Math.max(vw / W, vh / H);
+  const bg = document.getElementById('bg');
+  bg.style.transform = `scale(${c})`;
+  bg.style.left = `${(vw - W * c) / 2}px`;
+  bg.style.top = `${vh - H * c}px`;
 }
 
 // ---------- ciclo de pintado ----------
@@ -42,6 +55,8 @@ function update() {
   const pr = game.prompts[0];
   if (game.phase === 'gameOver') showDialog(gameOverHtml(game));
   else if (pr?.type === 'chooseReplace') showDialog(replaceDialogHtml(game, pr));
+  else if (pr?.type === 'harvestStore') showDialog(harvestStoreDialogHtml(game, pr));
+  else if (pr?.type === 'chooseStored') showDialog(warehouseDialogHtml(game));
   else hideDialog();
 }
 
@@ -61,7 +76,6 @@ function startGame() {
   lastSetup = setup;
   game = new Game(data, setup);
   window.game = game; // útil para depurar desde la consola
-  update();
 }
 
 const ACTIONS = {
@@ -70,6 +84,7 @@ const ACTIONS = {
   select: (i) => game.toggleSelect(i),
   crop: (i) => game.useOnCrop(i),
   mine: () => game.goMine(),
+  discard: () => game.discardSelected(),
   endActions: () => game.endActions(),
   pass: () => game.passTurn(),
   buySeed: (i) => game.buySeed(i),
@@ -81,6 +96,9 @@ const ACTIONS = {
   replace: (type) => game.chooseReplace(type),
   store: (i) => game.resolveHarvestStore(i),
   storeNone: () => game.resolveHarvestStore(null),
+  warehouse: () => game.openWarehouse(),
+  stored: (i) => game.chooseStored(i),
+  cancel: () => game.cancelPrompt(),
 };
 
 document.addEventListener('click', (e) => {
@@ -90,29 +108,42 @@ document.addEventListener('click', (e) => {
   const raw = el.dataset.i;
   const arg = raw !== undefined && raw !== '' && !isNaN(raw) ? Number(raw) : raw;
   ACTIONS[act]?.(arg);
+  hideTip();
   if (game && act !== 'restart') update();
 });
 
-// ---------- vista ampliada al pasar el ratón ----------
+// Configuración: un color elegido por un jugador queda deshabilitado para los demás
+document.addEventListener('change', (e) => {
+  if (!e.target.matches('.color-select')) return;
+  const selects = [...document.querySelectorAll('.color-select')];
+  for (const sel of selects) {
+    const taken = selects.filter((o) => o !== sel).map((o) => o.value);
+    for (const opt of sel.options) opt.disabled = taken.includes(opt.value);
+  }
+});
 
-const preview = document.getElementById('preview');
+// ---------- descripción de mejoras al pasar el ratón ----------
+
+const tip = document.getElementById('tooltip');
+function hideTip() { tip.classList.remove('show'); }
 document.addEventListener('mouseover', (e) => {
-  const el = e.target.closest('[data-preview]');
-  if (!el) { preview.classList.remove('show'); return; }
-  preview.querySelector('img').src = el.dataset.preview;
+  const el = e.target.closest('[data-tip]');
+  if (!el) { hideTip(); return; }
+  tip.innerHTML = el.dataset.tip;
+  tip.classList.add('show');
   const r = el.getBoundingClientRect();
-  const w = 300, h = 420;
-  const left = r.left + r.width / 2 < window.innerWidth / 2 ? Math.min(r.right + 16, window.innerWidth - w - 8) : Math.max(r.left - w - 16, 8);
-  const top = Math.min(Math.max(r.top + r.height / 2 - h / 2, 8), window.innerHeight - h - 8);
-  preview.style.left = `${left}px`;
-  preview.style.top = `${top}px`;
-  preview.classList.add('show');
+  const t = tip.getBoundingClientRect();
+  let left = r.left + r.width / 2 - t.width / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - t.width - 8));
+  const top = r.top - t.height - 10 > 8 ? r.top - t.height - 10 : r.bottom + 10;
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
 });
 
 // ---------- arranque ----------
 
-window.addEventListener('resize', fitStage);
-fitStage();
+window.addEventListener('resize', fit);
+fit();
 
 try {
   data = await loadData();

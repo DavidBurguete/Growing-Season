@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Growing Season</title>
+  <link rel="icon" type="image/webp" href="assets/web/background/barn.webp">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
@@ -11,33 +12,31 @@
 </head>
 <body>
   <div id="viewport">
+    <!-- Fondo (posiciones tomadas del diseño de Figma, lienzo 1920x923) -->
+    <div id="bg">
+      <img src="assets/web/background/cloud.webp" style="left:-186px;top:76px;width:466px">
+      <img src="assets/web/background/cloud.webp" style="left:553px;top:376px;width:356px">
+      <img src="assets/web/background/cloud.webp" style="left:880px;top:-31px;width:477px">
+      <img src="assets/web/background/cloud.webp" style="left:1478px;top:190px;width:411px">
+      <img src="assets/web/background/barn.webp" style="left:-2px;top:190px;width:643px">
+      <img src="assets/web/background/grass.webp" style="left:0;top:691px;width:520px;height:232px">
+      <img src="assets/web/background/grass.webp" style="left:520px;top:691px;width:520px;height:232px">
+      <img src="assets/web/background/grass.webp" style="left:1040px;top:691px;width:520px;height:232px">
+      <img src="assets/web/background/grass.webp" style="left:1560px;top:691px;width:520px;height:232px">
+      <img src="assets/web/background/bush.webp" style="left:120px;top:691px;width:411px">
+      <img src="assets/web/background/bush.webp" style="left:983px;top:691px;width:411px">
+      <img src="assets/web/background/bush.webp" style="left:1669px;top:691px;width:411px">
+    </div>
     <div id="stage">
-      <!-- Fondo (posiciones tomadas del diseño de Figma, lienzo 1920x923) -->
-      <div class="bg">
-        <img src="assets/img/background/cloud.png" style="left:-186px;top:76px;width:466px">
-        <img src="assets/img/background/cloud.png" style="left:553px;top:376px;width:356px">
-        <img src="assets/img/background/cloud.png" style="left:880px;top:-31px;width:477px">
-        <img src="assets/img/background/cloud.png" style="left:1478px;top:190px;width:411px">
-        <img src="assets/img/background/barn.png" style="left:-2px;top:190px;width:643px">
-        <img src="assets/img/background/grass.png" style="left:0;top:691px;width:520px;height:232px">
-        <img src="assets/img/background/grass.png" style="left:520px;top:691px;width:520px;height:232px">
-        <img src="assets/img/background/grass.png" style="left:1040px;top:691px;width:520px;height:232px">
-        <img src="assets/img/background/grass.png" style="left:1560px;top:691px;width:520px;height:232px">
-        <img src="assets/img/background/bush.png" style="left:120px;top:691px;width:411px">
-        <img src="assets/img/background/bush.png" style="left:983px;top:691px;width:411px">
-        <img src="assets/img/background/bush.png" style="left:1669px;top:691px;width:411px">
-      </div>
-
       <section id="market"></section>
       <div class="divider"></div>
       <section class="player-area" id="player-0"></section>
       <section class="player-area" id="player-1"></section>
       <div id="log"></div>
-      <div id="prompt"></div>
     </div>
   </div>
 
-  <div id="preview"><img alt=""></div>
+  <div id="tooltip"></div>
   <div id="overlay"></div>
 
   <script type="module" src="js/main.js"></script>

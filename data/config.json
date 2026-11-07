@@ -3,20 +3,81 @@
   "startingCoins": 0,
   "handSize": 5,
   "basePlots": 3,
-  "maxPlots": 6,
   "coinsPerBoardSpace": 10,
   "mineCardsPerTrip": 2,
   "mineCardsPerTripWithEquipment": 1,
-  "market": { "seeds": 5, "tools": 3, "farm": 3 },
+  "market": {
+    "seeds": 5,
+    "tools": 3,
+    "farm": 3
+  },
   "board": [
-    { "barn": true }, { "barn": true }, { "barn": true }, { "barn": false }, { "barn": true },
-    { "barn": true }, { "barn": false }, { "barn": true }, { "barn": false }, { "barn": false }
+    {
+      "barn": true
+    },
+    {
+      "barn": true
+    },
+    {
+      "barn": true
+    },
+    {
+      "barn": false
+    },
+    {
+      "barn": true
+    },
+    {
+      "barn": true
+    },
+    {
+      "barn": false
+    },
+    {
+      "barn": true
+    },
+    {
+      "barn": false
+    },
+    {
+      "barn": false
+    }
   ],
-  "starterSeeds": ["wheat-2", "wheat-3"],
   "colors": {
-    "rojo":   { "label": "Rojo",   "hex": "#d8402f" },
-    "rosa":   { "label": "Rosa",   "hex": "#e46fa8" },
-    "morado": { "label": "Morado", "hex": "#7e3fb0" },
-    "verde":  { "label": "Verde",  "hex": "#4aa53a" }
+    "rojo": {
+      "label": "Rojo",
+      "hex": "#d8402f"
+    },
+    "rosa": {
+      "label": "Rosa",
+      "hex": "#e46fa8"
+    },
+    "morado": {
+      "label": "Morado",
+      "hex": "#7e3fb0"
+    },
+    "verde": {
+      "label": "Verde",
+      "hex": "#4aa53a"
+    }
+  },
+  "maxUpgrades": 6,
+  "startingRewards": {
+    "_doc": "Recompensas iniciales por orden de jugador. Las 'randomize' primeras se reparten al azar entre esos jugadores.",
+    "randomize": 2,
+    "list": [
+      {
+        "seed": "wheat-2"
+      },
+      {
+        "seed": "wheat-3"
+      },
+      {
+        "coins": 3
+      },
+      {
+        "coins": 2
+      }
+    ]
   }
 }
