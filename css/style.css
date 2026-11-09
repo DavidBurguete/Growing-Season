@@ -233,6 +233,15 @@ img { -webkit-user-drag: none; }
 .btn:hover { filter: brightness(1.06); }
 .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #2b1d05; }
 .btn.secondary { background: var(--cream); }
+.btn.small { font-size: 16px; padding: 4px 10px; }
+.btn:disabled { opacity: .45; cursor: default; filter: none; transform: none; box-shadow: 0 4px 0 #2b1d05; }
+.dialog .btn + .btn { margin-left: 10px; }
+.banner .name small { font-size: 20px; opacity: .85; }
+
+/* Partida online: cuando no es tu turno ves la partida, pero no puedes tocar nada */
+body.watching #stage .card.hl { animation: none; cursor: default; }
+body.watching #stage .card.hl img.face, body.watching #stage .card.hl.empty { box-shadow: none; }
+body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: none; }
 
 .hand-row {
   margin-top: 18px;
@@ -430,3 +439,36 @@ img { -webkit-user-drag: none; }
 .choice-cards .card { --w: 150px; --h: 210px; cursor: pointer; }
 .choice-cards .card:hover > img.face { box-shadow: 0 0 0 4px var(--hl), 0 0 18px 6px var(--hl-glow); }
 .choice-cards .caption { margin-top: 8px; font: 18px 'Lilita One', sans-serif; }
+
+/* ---------- Menú y sala de espera online ---------- */
+
+.menu-buttons { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.menu-buttons .btn { width: 300px; margin: 0 !important; }
+.net-error { color: #b3261e; font-weight: 800; }
+.net-spinner { font-size: 26px; letter-spacing: 6px; color: var(--banner); animation: pulse 1s infinite; }
+.code-input { max-width: 130px; text-transform: uppercase; letter-spacing: 4px; font-weight: 800 !important; }
+.room-code {
+  margin: -8px 0 12px;
+  font: 52px 'Lilita One', sans-serif;
+  letter-spacing: 10px;
+  color: var(--banner);
+  text-shadow: 0 3px 0 #2b1d05;
+  user-select: all;
+}
+.lobby-list { display: flex; flex-direction: column; gap: 8px; margin: 0 auto 16px; max-width: 420px; }
+.lobby-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 12px;
+  border: 2px solid #2b1d05;
+  border-radius: 10px;
+  background: #fff;
+  font-weight: 800;
+}
+.lobby-row.waiting { justify-content: center; border-style: dashed; background: transparent; font-weight: 600; opacity: .7; }
+.lobby-row select { font: 16px 'Nunito', sans-serif; padding: 4px 8px; border: 2px solid #2b1d05; border-radius: 8px; }
+.chip { padding: 3px 12px; border-radius: 12px; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,.4); }
+
+.invite { margin: 0 auto 16px; max-width: 420px; text-align: left; font-weight: 800; }
+.invite label { display: block; margin-bottom: 4px; font-size: 14px; }
+.invite > div { display: flex; gap: 8px; }
+.invite input { flex: 1; min-width: 0; font: 16px 'Nunito', sans-serif; padding: 4px 8px; border: 2px solid #2b1d05; border-radius: 8px; }

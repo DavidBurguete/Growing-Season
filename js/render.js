@@ -47,11 +47,12 @@ const countBadge = (n) => `<span class="count-badge">${n}</span>`;
 const arrow = (dir = '') => `<img class="arrow ${dir}" src="${asset(IMG.arrow)}" alt="">`;
 const farmTip = (def) => def && `<b>${esc(def.name)}</b><br>${esc(def.description ?? '')}`;
 
-export function renderAll(game) {
+// me: asiento de este ordenador en una partida online (null en partida local)
+export function renderAll(game, { me = null } = {}) {
   const fresh = new Set(game.fresh);
   game.fresh = [];
   renderMarket(game, fresh);
-  game.players.forEach((p, i) => renderPlayer(game, p, i));
+  game.players.forEach((p, i) => renderPlayer(game, p, i, me));
   renderLog(game);
 }
 
@@ -168,21 +169,22 @@ function upgradeCell(game, p, u, active) {
   return `<div class="plot">${upgradeCard}${card({ img: IMG.seedBack, cls: 'crop', tip: `<b>${esc(u.stored.def.name)}</b><br>guardado en ${esc(u.def.name.toLowerCase())}` })}</div>`;
 }
 
-function renderPlayer(game, p, index) {
+function renderPlayer(game, p, index, me) {
   const el = document.getElementById(`player-${index}`);
   const active = index === game.current && game.phase !== 'gameOver';
   el.className = `player-area ${active ? 'active' : 'inactive'}`;
   const color = game.cfg.colors[p.color]?.hex ?? '#fff';
 
   let button = '';
-  if (active && !game.prompts.length) {
+  // En partidas online, los botones solo aparecen en el ordenador del jugador al que le toca
+  if (active && !game.prompts.length && (me === null || me === index)) {
     if (game.phase === 'action') button = `<button class="btn" data-act="endActions">Terminar acciones</button>`;
     if (game.phase === 'buy') button = `<button class="btn" data-act="pass">Pasar turno</button>`;
   }
 
   const banner = `
     <div class="banner" style="--banner:${color}">
-      <span class="name">${esc(p.name)}</span>
+      <span class="name">${esc(p.name)}${me === index ? ' <small>(tú)</small>' : ''}</span>
       <span class="coins">
         <span class="coin-stack"><img src="${asset(IMG.coin1)}"><img src="${asset(IMG.coin5)}"><img src="${asset(IMG.coin10)}"></span>
         x ${p.coins}
@@ -267,6 +269,86 @@ export function hideDialog() {
   overlay().innerHTML = '';
 }
 
+// ---------- menú inicial y partidas online ----------
+
+export function menuHtml() {
+  return `
+    <h1>Growing Season</h1>
+    <div class="menu-buttons">
+      <button class="btn" data-act="menuLocal">Partida local</button>
+      <button class="btn" data-act="menuHost">Crear partida online</button>
+      <button class="btn" data-act="menuJoin">Unirse a una partida</button>
+    </div>`;
+}
+
+const colorOptions = (cfg, sel, taken = []) => Object.entries(cfg.colors)
+  .map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''} ${taken.includes(k) ? 'disabled' : ''}>${v.label}</option>`).join('');
+const errorLine = (msg) => (msg ? `<p class="net-error">${esc(msg)}</p>` : '');
+
+export function hostFormHtml(cfg, d, error = '') {
+  return `
+    <h2>Crear partida online</h2>
+    <p>Tu navegador hará de anfitrión: mientras dure la partida, no cierres esta pestaña.</p>
+    <div class="setup-player">
+      <input id="net-name" value="${esc(d.name)}" maxlength="16" aria-label="Tu nombre">
+      <select id="net-color" aria-label="Tu color">${colorOptions(cfg, d.color)}</select>
+    </div>
+    ${errorLine(error)}
+    <button class="btn secondary" data-act="menu">Volver</button>
+    <button class="btn" data-act="createRoom">Crear sala</button>`;
+}
+
+export function joinFormHtml(d, error = '') {
+  return `
+    <h2>Unirse a una partida</h2>
+    <div class="setup-player">
+      <input id="net-code" class="code-input" value="${esc(d.code ?? '')}" maxlength="5" placeholder="CÓDIGO" aria-label="Código de la sala">
+      <input id="net-name" value="${esc(d.name)}" maxlength="16" aria-label="Tu nombre">
+    </div>
+    ${errorLine(error)}
+    <button class="btn secondary" data-act="menu">Volver</button>
+    <button class="btn" data-act="joinRoom">Conectar</button>`;
+}
+
+export function connectingHtml(text) {
+  return `<h2>${esc(text)}</h2><p class="net-spinner">●●●</p><button class="btn secondary" data-act="menu">Cancelar</button>`;
+}
+
+// Sala de espera. lobby = { code, link, players: [{name, color, online}], spectators, me, isHost }
+export function lobbyHtml(cfg, lobby) {
+  const rows = lobby.players.map((p, i) => {
+    const taken = lobby.players.filter((_, j) => j !== i).map((o) => o.color);
+    const color = i === lobby.me
+      ? `<select id="lobby-color" aria-label="Tu color">${colorOptions(cfg, p.color, taken)}</select>`
+      : `<span class="chip" style="background:${cfg.colors[p.color]?.hex}">${cfg.colors[p.color]?.label ?? ''}</span>`;
+    return `<div class="lobby-row"><span class="lobby-name">${esc(p.name)}${i === lobby.me ? ' (tú)' : ''}${i === 0 ? ' · anfitrión' : ''}</span>${color}</div>`;
+  }).join('');
+  const full = lobby.players.length >= 2;
+  const spect = lobby.spectators ? `<p>${lobby.spectators} espectador${lobby.spectators === 1 ? '' : 'es'} conectado${lobby.spectators === 1 ? '' : 's'}</p>` : '';
+  const actions = lobby.isHost
+    ? `<button class="btn secondary" data-act="menu">Cerrar sala</button>
+       <button class="btn" data-act="startOnline" ${full ? '' : 'disabled'}>Empezar partida</button>`
+    : `<p>${lobby.me === null ? 'La partida está completa: la verás como espectador.' : 'Esperando a que el anfitrión empiece la partida…'}</p>
+       <button class="btn secondary" data-act="menu">Salir</button>`;
+  return `
+    <h2>Sala de espera</h2>
+    <p>Código de la sala</p>
+    <div class="room-code">${esc(lobby.code)}</div>
+    ${lobby.isHost ? `
+      <div class="invite">
+        <label for="invite-host">Dirección para invitar (IP pública:puerto)</label>
+        <div><input id="invite-host" value="${esc(lobby.inviteHost)}" placeholder="81.0.0.1:8000" spellcheck="false">
+        <button class="btn small" data-act="copyLink">Copiar enlace</button></div>
+      </div>` : ''}
+    <div class="lobby-list">${rows}${full ? '' : '<div class="lobby-row waiting">Esperando a otro jugador…</div>'}</div>
+    ${spect}
+    ${actions}`;
+}
+
+export function messageHtml(title, text) {
+  return `<h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn" data-act="menu">Volver al menú</button>`;
+}
+
 export function setupDialogHtml(cfg, defaults) {
   const opts = (sel) => Object.entries(cfg.colors)
     .map(([k, v]) => {
@@ -281,6 +363,7 @@ export function setupDialogHtml(cfg, defaults) {
         <input id="name-${i}" value="${esc(d.name)}" maxlength="16" aria-label="Nombre del jugador ${i + 1}">
         <select id="color-${i}" class="color-select" aria-label="Color del jugador ${i + 1}">${opts(d.color)}</select>
       </div>`).join('')}
+    <button class="btn secondary" data-act="menu">Volver</button>
     <button class="btn" data-act="start">Empezar partida</button>`;
 }
 
@@ -316,10 +399,13 @@ export function warehouseDialogHtml(game) {
     <button class="btn secondary" data-act="cancel">No plantar</button>`;
 }
 
-export function gameOverHtml(game) {
+export function gameOverHtml(game, { canRestart = true } = {}) {
   const rows = game.players.map((p) => `<p><b>${esc(p.name)}</b>: ${p.board}/${game.cfg.board.length} casillas, ${p.coins} monedas, ${p.plots.filter((pl) => pl.crop).length} cultivos</p>`).join('');
   const title = game.winners.length === 1
     ? `¡Gana ${esc(game.winners[0].name)}!`
     : `¡Victoria compartida!`;
-  return `<h1>${title}</h1>${rows}<button class="btn" data-act="restart">Nueva partida</button>`;
+  const button = canRestart
+    ? '<button class="btn" data-act="restart">Nueva partida</button>'
+    : '<p>El anfitrión puede empezar una nueva partida.</p>';
+  return `<h1>${title}</h1>${rows}${button}`;
 }
