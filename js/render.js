@@ -1,7 +1,7 @@
 // Pinta el estado de la partida en el DOM. Cada interacción vuelve a pintar todo
 // (el DOM es pequeño); los clics se recogen por delegación con data-act.
 
-import { circlesOf, fmtFish } from './game.js';
+import { circlesOf, fmtFish, forcesExtras } from './game.js';
 
 // Las rutas de los datos apuntan a los originales (assets/img/*.png);
 // en pantalla se usan las copias ligeras generadas por scripts/optimize-images.sh.
@@ -20,12 +20,6 @@ const IMG = {
   coin10: 'assets/img/coins/coin-ten.png',
   water: 'assets/img/tokens/water-token.png',
 };
-
-// Centro de cada hueco del tablero, en % sobre la imagen board.png
-const BOARD_SPACES = [
-  [8.75, 56.5], [18, 45.2], [27.4, 35.9], [36.5, 46], [45.75, 56.5],
-  [55.25, 62.8], [64.5, 72.9], [73.75, 62.8], [83, 56.5], [92.25, 41],
-];
 
 // Geometría del mercado (debe coincidir con style.css) para animar el reparto desde el mazo
 const M_CARD = 92, M_GAP = 8, M_ARROW = 40;
@@ -238,17 +232,18 @@ function renderPlayer(game, p, index, me) {
   })}${pile}</div>`;
 
   // Tablero
-  const spaces = game.cfg.board.map((s, i) => {
-    const [x, y] = BOARD_SPACES[i] ?? [0, 0];
+  const board = game.boardDef;
+  const spaces = board.spaces.map((s, i) => {
     const filled = i < p.board;
     const next = active && i === p.board && game.canAdvanceBoard();
-    return `<div class="space ${next ? 'hl' : ''}" ${next ? 'data-act="advance"' : ''} style="left:${x}%;top:${y}%">
-      ${filled ? `<img src="${asset(IMG.coin10)}" alt="10">` : ''}</div>`;
+    return `<div class="space ${next ? 'hl' : ''}" ${next ? 'data-act="advance"' : ''} style="left:${s.x}%;top:${s.y}%">${filled ? `<img src="${asset(IMG.coin10)}" alt="10">` : ''}</div>`;
   }).join('');
 
-  // Granja: 3 huecos de mejora · 3 parcelas base · 3 huecos de mejora
+  // Granja: 3 huecos de mejora · 3 parcelas base · 3 huecos de mejora.
+  // En la partida larga, los huecos 7.º y 8.º van debajo, en el lado exterior de cada jugador.
   const half = game.cfg.maxUpgrades / 2;
-  const ups = Array.from({ length: game.cfg.maxUpgrades }, (_, i) => p.upgrades[i] ?? null);
+  const ups = Array.from({ length: game.maxUpgrades }, (_, i) => p.upgrades[i] ?? null);
+  const moreUps = ups.slice(game.cfg.maxUpgrades);
   const upgradeCells = (list) => list.map((u) => upgradeCell(game, p, u, active)).join('');
   const basePlots = [];
   for (let i = 0; i < game.cfg.basePlots; i++) basePlots.push(plotCell(game, p, i, active));
@@ -256,12 +251,13 @@ function renderPlayer(game, p, index, me) {
   el.innerHTML = `
     ${banner}
     <div class="hand-row">${deck}${arrow()}<div class="hand-slots">${slots.join('')}</div>${arrow()}${discard}</div>
-    <div class="board-row"><div class="board" style="background-image:url('${asset('assets/img/boards/board.png')}')">${spaces}</div></div>
+    <div class="board-row"><div class="board" style="background-image:url('${asset(board.image)}');aspect-ratio:${board.width}/${board.height};--space:${board.spaceSize}%">${spaces}</div></div>
     <div class="farm-row">
       ${upgradeCells(ups.slice(0, half))}
       ${basePlots.join('')}
-      ${upgradeCells(ups.slice(half))}
-    </div>`;
+      ${upgradeCells(ups.slice(half, game.cfg.maxUpgrades))}
+    </div>
+    ${moreUps.length ? `<div class="farm-row more-upgrades">${upgradeCells(moreUps)}</div>` : ''}`;
 }
 
 // ---------- registro ----------
@@ -362,7 +358,7 @@ export function lobbyHtml(cfg, lobby) {
         <button class="btn small" data-act="copyLink">Copiar enlace</button></div>
       </div>` : ''}
     <div class="lobby-list">${rows}${full ? '' : '<div class="lobby-row waiting">Esperando a otro jugador…</div>'}</div>
-    ${optionsHtml(lobby.options, { editable: lobby.isHost })}
+    ${optionsHtml(cfg, lobby.options, { editable: lobby.isHost })}
     ${spect}
     ${actions}`;
 }
@@ -371,11 +367,17 @@ export function messageHtml(title, text) {
   return `<h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn" data-act="menu">Volver al menú</button>`;
 }
 
-// Casillas de opciones de partida (ids opt-extras / opt-fishing)
-export function optionsHtml(options, { editable = true } = {}) {
-  const box = (id, checked, label) => `<label class="option"><input type="checkbox" id="${id}" ${checked ? 'checked' : ''} ${editable ? '' : 'disabled'}> ${label}</label>`;
+// Opciones de partida (ids opt-length / opt-extras / opt-fishing).
+// En la partida larga las mejoras extra son obligatorias: la casilla queda marcada y bloqueada.
+export function optionsHtml(cfg, options, { editable = true } = {}) {
+  const locked = forcesExtras(options.length);
+  const box = (id, checked, label, lock = false) => `<label class="option"><input type="checkbox" id="${id}" ${checked ? 'checked' : ''} ${editable && !lock ? '' : 'disabled'}> ${label}</label>`;
+  const lengths = Object.entries(cfg.boards)
+    .map(([k, b]) => `<option value="${k}" ${k === options.length ? 'selected' : ''}>${esc(b.label)}</option>`).join('');
   return `<div class="options">
-    ${box('opt-extras', options.extras, 'Jugar con las mejoras extra (★) de granja y herrería')}
+    <label class="option">Duración de la partida
+      <select id="opt-length" ${editable ? '' : 'disabled'}>${lengths}</select></label>
+    ${box('opt-extras', options.extras || locked, 'Jugar con las mejoras extra (★) de granja y herrería', locked)}
     ${box('opt-fishing', options.mode === 'fishing', 'Jugar con pesca en lugar de mina')}
   </div>`;
 }
@@ -394,7 +396,7 @@ export function setupDialogHtml(cfg, defaults, options) {
         <input id="name-${i}" value="${esc(d.name)}" maxlength="16" aria-label="Nombre del jugador ${i + 1}">
         <select id="color-${i}" class="color-select" aria-label="Color del jugador ${i + 1}">${opts(d.color)}</select>
       </div>`).join('')}
-    ${optionsHtml(options)}
+    ${optionsHtml(cfg, options)}
     <button class="btn secondary" data-act="menu">Volver</button>
     <button class="btn" data-act="start">Empezar partida</button>`;
 }
@@ -461,7 +463,7 @@ export function surrenderDialogHtml(game, index) {
 }
 
 export function gameOverHtml(game, { canRestart = true } = {}) {
-  const rows = game.players.map((p) => `<p><b>${esc(p.name)}</b>: ${p.board}/${game.cfg.board.length} casillas, ${p.coins} monedas, ${p.plots.filter((pl) => pl.crop).length} cultivos</p>`).join('');
+  const rows = game.players.map((p) => `<p><b>${esc(p.name)}</b>: ${p.board}/${game.boardSpaces.length} casillas, ${p.coins} monedas, ${p.plots.filter((pl) => pl.crop).length} cultivos</p>`).join('');
   const title = game.winners.length === 1
     ? `¡Gana ${esc(game.winners[0].name)}!`
     : `¡Victoria compartida!`;

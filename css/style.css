@@ -251,6 +251,8 @@ img { -webkit-user-drag: none; }
 .options { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin: 4px auto 18px; max-width: 460px; text-align: left; font-weight: 800; }
 .option { display: flex; gap: 8px; align-items: center; cursor: pointer; }
 .option input { width: 18px; height: 18px; accent-color: var(--banner); }
+/* Mismo aspecto que el selector de color de la configuración */
+.option select { font: 18px 'Nunito', sans-serif; padding: 6px 10px; border: 2px solid #2b1d05; border-radius: 8px; }
 .option input:disabled + * , .option:has(input:disabled) { cursor: default; }
 .choice-cards.fish-caught .card { --w: 100px; --h: 140px; cursor: default; }
 .banner .name small { font-size: 20px; opacity: .85; }
@@ -278,7 +280,7 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
 }
 .board {
   position: relative;
-  width: 600px; height: 119px;
+  width: 600px; height: auto;
   background: center / 100% 100% no-repeat;
   border-radius: 8px;
   box-shadow: 0 3px 8px rgba(0,0,0,.3);
@@ -286,7 +288,7 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
 /* Huecos del tablero: posiciones relativas medidas sobre la imagen original */
 .board .space {
   position: absolute;
-  width: 8.1%;
+  width: var(--space, 8%);
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
   border-radius: 50%;
@@ -300,6 +302,15 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
   justify-content: space-between;
   --w: 96px; --h: 134px;
 }
+/* Huecos de mejora 7.º y 8.º (partida larga): debajo de las dos cartas exteriores de la granja */
+.farm-row.more-upgrades {
+  position: absolute;
+  top: calc(100% - 12px);
+  margin: 0;
+  gap: calc((930px - 9 * var(--w)) / 8);
+}
+#player-0 .more-upgrades { left: 0; }
+#player-1 .more-upgrades { right: 0; flex-direction: row-reverse; }
 
 .plot { position: relative; }
 .plot .crop {

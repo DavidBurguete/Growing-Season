@@ -23,14 +23,21 @@ const TOOL_NAME = { watering: 'regadera', sickle: 'hoz' };
 // 2.5 → "2,5"
 export const fmtFish = (n) => String(n).replace('.', ',');
 
-// Opciones de la partida: extras = usar las mejoras con estrella; mode = 'mine' o 'fishing'
-export const DEFAULT_OPTIONS = { extras: false, mode: 'mine' };
+// Opciones de la partida: extras = usar las mejoras con estrella; mode = 'mine' o 'fishing';
+// length = duración ('short', 'normal' o 'long'), que decide el tablero
+export const DEFAULT_OPTIONS = { extras: false, mode: 'mine', length: 'normal' };
+
+// En la partida larga hay más casillas de granero que mejoras sin estrella: se juega con todas
+export const forcesExtras = (length) => length === 'long';
 
 export class Game {
   constructor(data, playerSetup, options = {}) {
     this.data = data;
     this.cfg = data.config;
     this.options = { ...DEFAULT_OPTIONS, ...options };
+    if (!this.cfg.boards[this.options.length]) this.options.length = DEFAULT_OPTIONS.length;
+    if (forcesExtras(this.options.length)) this.options.extras = true;
+    this.toolGift = []; // cartas de herrería ganadas en el tablero, pendientes de colocar
     this.surrendered = null;
     this.fishing = null; // salida de pesca en curso: { power, caught: [defs] }
     this.log = [];
@@ -119,6 +126,10 @@ export class Game {
 
   get player() { return this.players[this.current]; }
   get fishingMode() { return this.options.mode === 'fishing'; }
+  get boardDef() { return this.cfg.boards[this.options.length]; }
+  get boardSpaces() { return this.boardDef.spaces; }
+  // La partida larga tiene más huecos de mejora (7.º y 8.º)
+  get maxUpgrades() { return this.boardDef.maxUpgrades ?? this.cfg.maxUpgrades; }
   // who: índice del jugador al que se refiere la línea (para pintarla de su color)
   say(msg, kind = 'info', who = this.players ? this.current : null) {
     this.log.push({ msg, kind, turn: this.turnNumber, who });
@@ -584,7 +595,7 @@ export class Game {
 
   canAdvanceBoard() {
     const p = this.player;
-    return this.phase === 'buy' && !this.prompts.length && p.board < this.cfg.board.length && p.coins >= this.cfg.coinsPerBoardSpace;
+    return this.phase === 'buy' && !this.prompts.length && p.board < this.boardSpaces.length && p.coins >= this.cfg.coinsPerBoardSpace;
   }
 
   canUseAssorted() {
@@ -699,7 +710,9 @@ export class Game {
     const pr = this.prompts[0];
     if (!pr || pr.type !== 'chooseReplace' || !pr.options.includes(type)) return;
     this.prompts.shift();
+    if (pr.giftSlot !== undefined) this.market.tools[pr.giftSlot] = null;
     this.replaceStarter(this.player, type, pr.tool);
+    if (pr.giftSlot !== undefined) this.continueToolGift();
     this.afterPrompt();
   }
 
@@ -721,13 +734,46 @@ export class Game {
     if (!this.canAdvanceBoard()) return;
     const p = this.player;
     p.coins -= this.cfg.coinsPerBoardSpace;
-    const space = this.cfg.board[p.board];
+    const space = this.boardSpaces[p.board];
     p.board++;
     this.say(`${p.name} coloca una moneda de 10 en la casilla ${p.board}`, 'coin');
-    if (space.barn && this.market.farm.some(Boolean) && p.upgrades.length < this.cfg.maxUpgrades) {
+    if (space.reward === 'farm' && this.market.farm.some(Boolean) && p.upgrades.length < this.maxUpgrades) {
       this.prompts.push({ type: 'chooseFarm' });
     }
+    if (space.reward === 'tools') this.takeShopTools(p);
     this.afterPrompt();
+  }
+
+  // Casilla de hoz/regadera x3: el jugador se lleva gratis las cartas que haya en la herrería
+  takeShopTools(p) {
+    const slots = this.market.tools.map((d, i) => (d ? i : -1)).filter((i) => i >= 0);
+    if (!slots.length) { this.say('La herrería está vacía: no hay cartas que llevarse'); return; }
+    this.say(`${p.name} se lleva gratis las cartas de la herrería`);
+    this.toolGift.push(...slots);
+    this.continueToolGift();
+  }
+
+  // Recorre los huecos de la herrería uno a uno. Cada carta tiene que sustituir a una inicial:
+  // si no queda ninguna de su tipo, se queda en la herrería; si puede sustituir a una regadera
+  // o a una hoz, se pregunta cuál y se para hasta la respuesta (chooseReplace la reanuda).
+  continueToolGift() {
+    const p = this.player;
+    while (this.toolGift.length) {
+      const slot = this.toolGift.shift();
+      const def = this.market.tools[slot];
+      if (!def) continue;
+      const opts = this.toolReplaceOptions(p, def);
+      if (!opts.length) {
+        this.say(`${def.name} se queda en la herrería (no queda ninguna carta inicial que sustituir)`);
+        continue;
+      }
+      if (opts.length > 1) {
+        this.prompts.push({ type: 'chooseReplace', tool: def, options: opts, giftSlot: slot });
+        return;
+      }
+      this.market.tools[slot] = null;
+      this.replaceStarter(p, opts[0], def);
+    }
   }
 
   chooseFarm(i) {
@@ -768,7 +814,7 @@ export class Game {
     const p = this.player;
     this.market.assortedReveal = null;
     this.refillMarket();
-    if (p.board >= this.cfg.board.length && !this.lastRound) {
+    if (p.board >= this.boardSpaces.length && !this.lastRound) {
       this.lastRound = true;
       this.say(`¡${p.name} ha completado el tablero! Última ronda.`, 'turn');
     }
@@ -796,7 +842,7 @@ export class Game {
   finish() {
     this.phase = 'gameOver';
     const crops = (p) => p.plots.filter((pl) => pl.crop).length;
-    let cands = this.players.filter((p) => p.board >= this.cfg.board.length);
+    let cands = this.players.filter((p) => p.board >= this.boardSpaces.length);
     const maxCoins = Math.max(...cands.map((p) => p.coins));
     cands = cands.filter((p) => p.coins === maxCoins);
     const maxCrops = Math.max(...cands.map(crops));

@@ -1,5 +1,5 @@
 {
-  "_doc": "Parámetros generales de la partida (modo 2 jugadores).",
+  "_doc": "Parámetros generales de la partida (modo 2 jugadores). 'boards': un tablero por duración de partida; cada casilla tiene su centro (x, y en % de la imagen) y su recompensa: 'farm' = mejora de granja (granero), 'tools' = las cartas de la herrería gratis (hoz/regadera x3), null = nada. 'spaceSize' = diámetro de la casilla en % del ancho. 'maxUpgrades' (opcional) sustituye al máximo general de mejoras por jugador.",
   "startingCoins": 0,
   "handSize": 5,
   "basePlots": 3,
@@ -11,38 +11,64 @@
     "tools": 3,
     "farm": 3
   },
-  "board": [
-    {
-      "barn": true
+  "boards": {
+    "short": {
+      "label": "Corta",
+      "image": "assets/img/boards/short-game.png",
+      "width": 3200, "height": 554,
+      "spaceSize": 7.75,
+      "spaces": [
+        { "x": 33.38, "y": 57.4, "reward": "farm" },
+        { "x": 43.5, "y": 56.32, "reward": "farm" },
+        { "x": 53.5, "y": 57.76, "reward": "farm" },
+        { "x": 64.38, "y": 57.4, "reward": null },
+        { "x": 74.44, "y": 60.65, "reward": null },
+        { "x": 84.56, "y": 61.37, "reward": null }
+      ]
     },
-    {
-      "barn": true
+    "normal": {
+      "label": "Normal",
+      "image": "assets/img/boards/normal-game.png",
+      "width": 3200, "height": 559,
+      "spaceSize": 7.75,
+      "spaces": [
+        { "x": 6.19, "y": 55.0, "reward": "farm" },
+        { "x": 16.0, "y": 41.79, "reward": "farm" },
+        { "x": 25.69, "y": 30.71, "reward": "farm" },
+        { "x": 35.5, "y": 43.57, "reward": null },
+        { "x": 45.38, "y": 55.36, "reward": "farm" },
+        { "x": 54.19, "y": 63.21, "reward": "farm" },
+        { "x": 63.94, "y": 68.21, "reward": null },
+        { "x": 73.75, "y": 61.43, "reward": "farm" },
+        { "x": 84.62, "y": 54.64, "reward": null },
+        { "x": 94.44, "y": 36.79, "reward": null }
+      ]
     },
-    {
-      "barn": true
-    },
-    {
-      "barn": false
-    },
-    {
-      "barn": true
-    },
-    {
-      "barn": true
-    },
-    {
-      "barn": false
-    },
-    {
-      "barn": true
-    },
-    {
-      "barn": false
-    },
-    {
-      "barn": false
+    "long": {
+      "label": "Larga",
+      "image": "assets/img/boards/long-game.png",
+      "maxUpgrades": 8,
+      "width": 3200, "height": 536,
+      "spaceSize": 7.75,
+      "spaces": [
+        { "x": 6.88, "y": 73.51, "reward": "tools" },
+        { "x": 13.12, "y": 31.72, "reward": "farm" },
+        { "x": 19.31, "y": 73.88, "reward": "tools" },
+        { "x": 25.81, "y": 31.72, "reward": "farm" },
+        { "x": 32.06, "y": 73.88, "reward": "farm" },
+        { "x": 38.38, "y": 31.72, "reward": "farm" },
+        { "x": 44.62, "y": 73.88, "reward": "farm" },
+        { "x": 50.81, "y": 31.72, "reward": null },
+        { "x": 57.0, "y": 73.88, "reward": "farm" },
+        { "x": 63.12, "y": 31.72, "reward": "farm" },
+        { "x": 69.31, "y": 73.88, "reward": "farm" },
+        { "x": 75.5, "y": 31.34, "reward": null },
+        { "x": 81.69, "y": 73.51, "reward": null },
+        { "x": 87.94, "y": 31.34, "reward": null },
+        { "x": 94.25, "y": 73.51, "reward": null }
+      ]
     }
-  ],
+  },
   "colors": {
     "rojo": {
       "label": "Rojo",

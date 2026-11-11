@@ -1,4 +1,4 @@
-import { Game, DEFAULT_OPTIONS } from './game.js';
+import { Game, DEFAULT_OPTIONS, forcesExtras } from './game.js';
 import {
   renderAll, showDialog, hideDialog, setupDialogHtml, replaceDialogHtml,
   harvestStoreDialogHtml, warehouseDialogHtml, gameOverHtml,
@@ -32,8 +32,20 @@ let confirmSurrender = null; // jugador que ha pulsado "rendirse" y aún no lo h
 function readOptions(prev) {
   const extras = document.getElementById('opt-extras');
   const fishing = document.getElementById('opt-fishing');
-  if (!extras || !fishing) return prev;
-  return { extras: extras.checked, mode: fishing.checked ? 'fishing' : 'mine' };
+  const length = document.getElementById('opt-length');
+  if (!extras || !fishing || !length) return prev;
+  return { extras: extras.checked || forcesExtras(length.value), mode: fishing.checked ? 'fishing' : 'mine', length: length.value };
+}
+
+// La partida larga obliga a jugar con las mejoras extra: se marca y bloquea la casilla
+// sin repintar el diálogo (así no se pierden los nombres escritos)
+function syncExtrasBox() {
+  const extras = document.getElementById('opt-extras');
+  const length = document.getElementById('opt-length');
+  if (!extras || !length || length.disabled) return;
+  const locked = forcesExtras(length.value);
+  if (locked) extras.checked = true;
+  extras.disabled = locked;
 }
 
 // ---------- estado de la red ----------
@@ -435,7 +447,8 @@ document.addEventListener('change', (e) => {
     try { localStorage.setItem('gs-invite-host', e.target.value.trim()); } catch { /* sin almacenamiento */ }
   }
   // Opciones de partida: en la configuración local o en la sala del anfitrión
-  if (e.target.id === 'opt-extras' || e.target.id === 'opt-fishing') {
+  if (e.target.id === 'opt-extras' || e.target.id === 'opt-fishing' || e.target.id === 'opt-length') {
+    if (e.target.id === 'opt-length') syncExtrasBox();
     if (net.mode === 'host' && !game) { net.options = readOptions(net.options); showLobby(); }
     if (net.mode === 'local') lastOptions = readOptions(lastOptions);
   }
