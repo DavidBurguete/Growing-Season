@@ -1,7 +1,7 @@
 // Pinta el estado de la partida en el DOM. Cada interacción vuelve a pintar todo
 // (el DOM es pequeño); los clics se recogen por delegación con data-act.
 
-import { circlesOf } from './game.js';
+import { circlesOf, fmtFish } from './game.js';
 
 // Las rutas de los datos apuntan a los originales (assets/img/*.png);
 // en pantalla se usan las copias ligeras generadas por scripts/optimize-images.sh.
@@ -12,6 +12,7 @@ const IMG = {
   toolBack: 'assets/img/tools/tools-back.png',
   farmBack: 'assets/img/farm/farm-upgrades-back.png',
   mineBack: 'assets/img/mining/mine-back.png',
+  fishBack: 'assets/img/fishing/fishing-back.png',
   landPlot: 'assets/img/farm/land-plot.png',
   arrow: 'assets/img/arrow.png',
   coin1: 'assets/img/coins/coin-one.png',
@@ -45,12 +46,15 @@ function card({ img, cls = '', act = '', i = '', badge = '', extra = '', tip = '
 }
 const countBadge = (n) => `<span class="count-badge">${n}</span>`;
 const arrow = (dir = '') => `<img class="arrow ${dir}" src="${asset(IMG.arrow)}" alt="">`;
-const farmTip = (def) => def && `<b>${esc(def.name)}</b><br>${esc(def.description ?? '')}`;
+// En modo pesca, algunas mejoras tienen otra descripción
+let fishingTips = false;
+const farmTip = (def) => def && `<b>${esc(def.name)}</b><br>${esc((fishingTips && def.descriptionFishing) || def.description || '')}`;
 
 // me: asiento de este ordenador en una partida online (null en partida local)
 export function renderAll(game, { me = null } = {}) {
   const fresh = new Set(game.fresh);
   game.fresh = [];
+  fishingTips = game.options?.mode === 'fishing';
   renderMarket(game, fresh);
   game.players.forEach((p, i) => renderPlayer(game, p, i, me));
   renderLog(game);
@@ -89,15 +93,21 @@ function renderMarket(game, fresh) {
   })).join('');
   const farmDeck = card({ img: IMG.farmBack, badge: countBadge(m.farmDeck.length) });
 
-  const canMine = game.canMine();
+  // Mina o, en su lugar, pesca (mismo hueco del mercado)
+  const fishing = game.options?.mode === 'fishing';
+  const back = fishing ? IMG.fishBack : IMG.mineBack;
+  const canGo = fishing ? game.canFish() : game.canMine();
+  const power = fishing && canGo ? game.fishPower(game.selectedCards()) : 0;
   const mineDeck = card({
-    img: IMG.mineBack, act: canMine ? 'mine' : '', cls: canMine ? 'hl' : '',
+    img: back, act: canGo ? (fishing ? 'fish' : 'mine') : '', cls: canGo ? 'hl' : '',
     badge: countBadge(m.mineDeck.length),
+    extra: canGo && fishing ? `<span class="uses-badge">🎣 ${fmtFish(power)}</span>` : '',
+    tip: fishing ? `<b>Pesca</b><br>${canGo ? `Pescar con valor ${fmtFish(power)}` : 'Selecciona las cartas sin usar con las que quieras pescar'}` : '',
   });
   // Mientras la carta nueva se anima, la anterior sigue visible debajo
   const mineDeal = dealt('mine', 0, FROM_DECK_LEFT(0));
   const mineUnder = mineDeal !== null && m.mineUnder ? card({ img: m.mineUnder.image, cls: 'under' }) : '';
-  const mineRevealed = `<div class="mine-slot">${mineUnder}${card({ img: m.mineRevealed?.image, deal: mineDeal, back: IMG.mineBack })}</div>`;
+  const mineRevealed = `<div class="mine-slot">${mineUnder}${card({ img: m.mineRevealed?.image, deal: mineDeal, back })}</div>`;
 
   const tools = m.tools.map((d, i) => {
     const can = game.canBuyTool(i);
@@ -111,7 +121,7 @@ function renderMarket(game, fresh) {
   document.getElementById('market').innerHTML = `
     <div class="market-group"><span class="label">Semillas</span><div class="deck-col">${seedDeck}${reveal}</div>${arrow()}${seeds}</div>
     <div class="market-group"><span class="label">Mejoras de granja</span>${farm}${arrow('left')}${farmDeck}</div>
-    <div class="market-group"><span class="label">Mina</span>${mineDeck}${arrow()}${mineRevealed}</div>
+    <div class="market-group"><span class="label">${fishing ? 'Pesca' : 'Mina'}</span>${mineDeck}${arrow()}${mineRevealed}</div>
     <div class="market-group"><span class="label">Herrería</span>${toolDeck}${arrow()}${tools}</div>`;
 }
 
@@ -166,7 +176,8 @@ function upgradeCell(game, p, u, active) {
   const upgradeCard = card({ img: u.def.image, act, i: u.uid, cls: hl ? 'hl' : '', extra, tip: farmTip(u.def) });
   // Encurtidora / semilladora: el cultivo guardado, boca abajo, encima como en una parcela
   if (!u.stored) return upgradeCard;
-  return `<div class="plot">${upgradeCard}${card({ img: IMG.seedBack, cls: 'crop', tip: `<b>${esc(u.stored.def.name)}</b><br>guardado en ${esc(u.def.name.toLowerCase())}` })}</div>`;
+  const when = u.def.type === 'seedmaker' && u.armed ? '<br>se replanta al empezar el turno o en la fase de compra' : '';
+  return `<div class="plot">${upgradeCard}${card({ img: IMG.seedBack, cls: 'crop', tip: `<b>${esc(u.stored.def.name)}</b><br>guardado en ${esc(u.def.name.toLowerCase())}${when}` })}</div>`;
 }
 
 function renderPlayer(game, p, index, me) {
@@ -182,6 +193,11 @@ function renderPlayer(game, p, index, me) {
     if (game.phase === 'buy') button = `<button class="btn" data-act="pass">Pasar turno</button>`;
   }
 
+  // Rendirse: en local, el jugador al que le toca; online, cada uno desde su ordenador
+  const canSurrender = game.phase !== 'gameOver' && (me === null ? active : me === index);
+  const surrender = canSurrender
+    ? `<button class="btn small surrender" data-act="surrender" data-i="${index}" title="Rendirse">🏳</button>` : '';
+
   const banner = `
     <div class="banner" style="--banner:${color}">
       <span class="name">${esc(p.name)}${me === index ? ' <small>(tú)</small>' : ''}</span>
@@ -189,7 +205,7 @@ function renderPlayer(game, p, index, me) {
         <span class="coin-stack"><img src="${asset(IMG.coin1)}"><img src="${asset(IMG.coin5)}"><img src="${asset(IMG.coin10)}"></span>
         x ${p.coins}
       </span>
-      ${button}
+      ${button}${surrender}
     </div>`;
 
   // Mano
@@ -201,6 +217,7 @@ function renderPlayer(game, p, index, me) {
     const left = [];
     if (c.used && c.def.water) left.push(`💧${c.waterLeft}`);
     if (c.used && c.def.sickle) left.push(`🌾${c.sickleLeft}`);
+    if (!c.used && selected && game.options?.mode === 'fishing') left.push(`🐟${fmtFish(c.def.fish ?? 0)}`);
     slots.push(card({
       img: c.image, act: active && game.phase === 'action' ? 'select' : '', i: c.uid,
       cls: `clickable ${selected ? 'selected' : ''} ${c.used ? 'used' : ''}`,
@@ -250,7 +267,11 @@ function renderPlayer(game, p, index, me) {
 // ---------- registro ----------
 
 function renderLog(game) {
-  const lines = game.log.slice().reverse().map((l) => `<div class="${l.kind}">${esc(l.msg)}</div>`).join('');
+  const hex = (who) => game.cfg.colors[game.players[who]?.color]?.hex;
+  const lines = game.log.slice().reverse().map((l) => {
+    const c = l.who !== null && l.who !== undefined ? hex(l.who) : null;
+    return `<div class="${l.kind}" ${c ? `style="color:${c}"` : ''}>${esc(l.msg)}</div>`;
+  }).join('');
   const el = document.getElementById('log');
   el.innerHTML = lines;
   el.scrollTop = 0;
@@ -341,6 +362,7 @@ export function lobbyHtml(cfg, lobby) {
         <button class="btn small" data-act="copyLink">Copiar enlace</button></div>
       </div>` : ''}
     <div class="lobby-list">${rows}${full ? '' : '<div class="lobby-row waiting">Esperando a otro jugador…</div>'}</div>
+    ${optionsHtml(lobby.options, { editable: lobby.isHost })}
     ${spect}
     ${actions}`;
 }
@@ -349,7 +371,16 @@ export function messageHtml(title, text) {
   return `<h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn" data-act="menu">Volver al menú</button>`;
 }
 
-export function setupDialogHtml(cfg, defaults) {
+// Casillas de opciones de partida (ids opt-extras / opt-fishing)
+export function optionsHtml(options, { editable = true } = {}) {
+  const box = (id, checked, label) => `<label class="option"><input type="checkbox" id="${id}" ${checked ? 'checked' : ''} ${editable ? '' : 'disabled'}> ${label}</label>`;
+  return `<div class="options">
+    ${box('opt-extras', options.extras, 'Jugar con las mejoras extra (★) de granja y herrería')}
+    ${box('opt-fishing', options.mode === 'fishing', 'Jugar con pesca en lugar de mina')}
+  </div>`;
+}
+
+export function setupDialogHtml(cfg, defaults, options) {
   const opts = (sel) => Object.entries(cfg.colors)
     .map(([k, v]) => {
       const taken = k !== sel && defaults.some((d) => d.color === k);
@@ -363,6 +394,7 @@ export function setupDialogHtml(cfg, defaults) {
         <input id="name-${i}" value="${esc(d.name)}" maxlength="16" aria-label="Nombre del jugador ${i + 1}">
         <select id="color-${i}" class="color-select" aria-label="Color del jugador ${i + 1}">${opts(d.color)}</select>
       </div>`).join('')}
+    ${optionsHtml(options)}
     <button class="btn secondary" data-act="menu">Volver</button>
     <button class="btn" data-act="start">Empezar partida</button>`;
 }
@@ -399,6 +431,35 @@ export function warehouseDialogHtml(game) {
     <button class="btn secondary" data-act="cancel">No plantar</button>`;
 }
 
+export function seedmakerDialogHtml(game, pr) {
+  return `
+    <h2>Semilladora: ¿qué haces con ${esc(pr.crop.def.name)}?</h2>
+    <div class="store-source">${card({ img: pr.crop.def.image })}</div>
+    ${pr.canPlant ? '<button class="btn" data-act="smPlant">Plantar</button>' : '<p>No hay ninguna parcela libre.</p>'}
+    <button class="btn" data-act="smWarehouse">Guardar en el almacén</button>
+    <button class="btn secondary" data-act="smKeep">Dejar en la semilladora</button>`;
+}
+
+export function fishDialogHtml(game) {
+  const f = game.fishing;
+  const coins = f.caught.reduce((s, c) => s + c.coins, 0);
+  return `
+    <h2>¡Has pescado!</h2>
+    <div class="choice-cards fish-caught">${f.caught.map((c) => card({ img: c.image })).join('')}</div>
+    <p>Llevas <b>${coins}</b> moneda${coins === 1 ? '' : 's'} y te queda un valor de pesca de <b>${fmtFish(f.power)}</b>.<br>
+    Si sigues y el siguiente pez supera tu valor, se escapará junto con el último que has pescado.</p>
+    <button class="btn secondary" data-act="fishStop">Parar y cobrar</button>
+    <button class="btn" data-act="fishMore">Seguir pescando</button>`;
+}
+
+export function surrenderDialogHtml(game, index) {
+  return `
+    <h2>¿Seguro que ${esc(game.players[index].name)} se rinde?</h2>
+    <p>La partida terminará y ganará el otro jugador.</p>
+    <button class="btn secondary" data-act="surrenderNo">Cancelar</button>
+    <button class="btn danger" data-act="surrenderYes" data-i="${index}">Rendirse</button>`;
+}
+
 export function gameOverHtml(game, { canRestart = true } = {}) {
   const rows = game.players.map((p) => `<p><b>${esc(p.name)}</b>: ${p.board}/${game.cfg.board.length} casillas, ${p.coins} monedas, ${p.plots.filter((pl) => pl.crop).length} cultivos</p>`).join('');
   const title = game.winners.length === 1
@@ -407,5 +468,7 @@ export function gameOverHtml(game, { canRestart = true } = {}) {
   const button = canRestart
     ? '<button class="btn" data-act="restart">Nueva partida</button>'
     : '<p>El anfitrión puede empezar una nueva partida.</p>';
-  return `<h1>${title}</h1>${rows}${button}`;
+  const gaveUp = game.surrendered !== null && game.surrendered !== undefined
+    ? `<p>${esc(game.players[game.surrendered].name)} se ha rendido.</p>` : '';
+  return `<h1>${title}</h1>${gaveUp}${rows}${button}`;
 }

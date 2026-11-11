@@ -1,5 +1,5 @@
 {
-  "_doc": "Cartas de herramienta (energía). 'water' = unidades de riego, 'sickle' = unidades de cosecha, 'fish' = valor de pesca (aún no se usa), 'colors' = personaje(s) de la carta. Los colores: rojo=red-guy, rosa=blue-girl, morado=purple-girl, verde=yellow-guy. 'starters' son las cartas iniciales por color (con guante); 'shop' son las mejoras de la herrería.",
+  "_doc": "Cartas de herramienta (energía). 'water' = unidades de riego, 'sickle' = unidades de cosecha, 'fish' = valor de pesca (modo pesca), 'colors' = personaje(s) de la carta. Los colores: rojo=red-guy, rosa=blue-girl, morado=purple-girl, verde=yellow-guy. 'starters' son las cartas iniciales por color (con guante); 'shop' son las mejoras de la herrería. 'extra': true = mejora extra (estrella), solo si se activa al empezar.",
   "starterDeck": { "watering": 10, "sickle": 5 },
   "starters": {
     "rojo":   { "watering": "assets/img/tools/red-guy-watering-can.png",    "sickle": "assets/img/tools/red-guy-sickle.png" },
@@ -17,11 +17,11 @@
     { "id": "wc2-rojo",     "name": "Regadera x2",        "image": "assets/img/tools/red-guy-watering-can-x2.png",     "colors": ["rojo"],   "water": 2, "sickle": 0, "fish": 0.5, "cost": 1, "count": 3 },
     { "id": "wc2-rosa",     "name": "Regadera x2",        "image": "assets/img/tools/blue-girl-watering-can-x2.png",   "colors": ["rosa"],   "water": 2, "sickle": 0, "fish": 1,   "cost": 1, "count": 4 },
     { "id": "wc2-verde",    "name": "Regadera x2",        "image": "assets/img/tools/yellow-guy-watering-can-x2.png",  "colors": ["verde"],  "water": 2, "sickle": 0, "fish": 2,   "cost": 1, "count": 1 },
-    { "id": "mix2-3p-vm",   "name": "Regadera + hoz x2",  "image": "assets/img/tools/watering-can-sickle-x2-again-again-again.png", "colors": ["verde", "morado"], "water": 2, "sickle": 2, "fish": 3, "cost": 2, "count": 1 },
-    { "id": "mix2-2p-vm",   "name": "Regadera + hoz x2",  "image": "assets/img/tools/watering-can-sickle-x2.png",                   "colors": ["verde", "morado"], "water": 2, "sickle": 2, "fish": 2, "cost": 2, "count": 1 },
-    { "id": "mix1-2p-vm",   "name": "Regadera + hoz",     "image": "assets/img/tools/watering-can-sickle-x2-again.png",             "colors": ["verde", "morado"], "water": 1, "sickle": 1, "fish": 2, "cost": 1, "count": 2 },
-    { "id": "mix2-2p-rr",   "name": "Regadera + hoz x2",  "image": "assets/img/tools/watering-can-sickle-x2-again-again.png",       "colors": ["rojo", "rosa"],    "water": 2, "sickle": 2, "fish": 2, "cost": 2, "count": 2 },
-    { "id": "mix1-1p-rr",   "name": "Regadera + hoz",     "image": "assets/img/tools/watering-can-sickle.png",                      "colors": ["rojo", "rosa"],    "water": 1, "sickle": 1, "fish": 1, "cost": 1, "count": 4 },
+    { "id": "mix2-3p-vm",   "name": "Regadera + hoz x2",  "image": "assets/img/tools/watering-can-sickle-x2-again-again-again.png", "colors": ["verde", "morado"], "water": 2, "sickle": 2, "fish": 3, "cost": 2, "count": 1, "extra": true },
+    { "id": "mix2-2p-vm",   "name": "Regadera + hoz x2",  "image": "assets/img/tools/watering-can-sickle-x2.png",                   "colors": ["verde", "morado"], "water": 2, "sickle": 2, "fish": 2, "cost": 2, "count": 1, "extra": true },
+    { "id": "mix1-2p-vm",   "name": "Regadera + hoz",     "image": "assets/img/tools/watering-can-sickle-x2-again.png",             "colors": ["verde", "morado"], "water": 1, "sickle": 1, "fish": 2, "cost": 1, "count": 2, "extra": true },
+    { "id": "mix2-2p-rr",   "name": "Regadera + hoz x2",  "image": "assets/img/tools/watering-can-sickle-x2-again-again.png",       "colors": ["rojo", "rosa"],    "water": 2, "sickle": 2, "fish": 2, "cost": 2, "count": 2, "extra": true },
+    { "id": "mix1-1p-rr",   "name": "Regadera + hoz",     "image": "assets/img/tools/watering-can-sickle.png",                      "colors": ["rojo", "rosa"],    "water": 1, "sickle": 1, "fish": 1, "cost": 1, "count": 4, "extra": true },
     { "id": "sk2-2p-rosa",  "name": "Hoz x2",             "image": "assets/img/tools/blue-girl-sickle-x2.png",       "colors": ["rosa"], "water": 0, "sickle": 2, "fish": 2, "cost": 1, "count": 1 },
     { "id": "sk2-3p-rosa",  "name": "Hoz x2",             "image": "assets/img/tools/blue-girl-sickle-x2-again.png", "colors": ["rosa"], "water": 0, "sickle": 2, "fish": 3, "cost": 1, "count": 1 },
     { "id": "sk2-2p-rojo",  "name": "Hoz x2",             "image": "assets/img/tools/red-guy-sickle-x2.png",         "colors": ["rojo"], "water": 0, "sickle": 2, "fish": 2, "cost": 1, "count": 2 }

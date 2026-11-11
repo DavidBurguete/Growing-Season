@@ -236,6 +236,23 @@ img { -webkit-user-drag: none; }
 .btn.small { font-size: 16px; padding: 4px 10px; }
 .btn:disabled { opacity: .45; cursor: default; filter: none; transform: none; box-shadow: 0 4px 0 #2b1d05; }
 .dialog .btn + .btn { margin-left: 10px; }
+.btn.danger { background: var(--danger); color: #fff; }
+/* Rendirse: botón redondo en la esquina del cartel, sin quitar sitio al nombre */
+.banner .btn.surrender {
+  position: absolute; right: -14px; top: -14px;
+  width: 34px; height: 34px; padding: 0;
+  border-radius: 50%;
+  font-size: 17px; line-height: 30px;
+  box-shadow: 0 2px 0 #2b1d05;
+  z-index: 5;
+}
+.banner .btn.surrender:active { transform: translateY(2px); box-shadow: none; }
+
+.options { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin: 4px auto 18px; max-width: 460px; text-align: left; font-weight: 800; }
+.option { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.option input { width: 18px; height: 18px; accent-color: var(--banner); }
+.option input:disabled + * , .option:has(input:disabled) { cursor: default; }
+.choice-cards.fish-caught .card { --w: 100px; --h: 140px; cursor: default; }
 .banner .name small { font-size: 20px; opacity: .85; }
 
 /* Partida online: cuando no es tu turno ves la partida, pero no puedes tocar nada */
@@ -367,15 +384,18 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
   overflow-y: auto;
   padding: 8px 16px;
   border-radius: 12px;
-  background: rgba(43, 29, 5, .72);
-  color: #fff;
+  /* Opaco y claro: cada línea va del color de su jugador */
+  background: var(--cream);
+  border: 3px solid #2b1d05;
+  color: #2b1d05;
   font-size: 15px;
+  font-weight: 800;
   line-height: 1.35;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,.5) transparent;
+  scrollbar-color: rgba(43,29,5,.5) transparent;
 }
-#log .coin { color: #ffd25e; }
-#log .turn { color: #9fe39a; font-weight: 800; }
+#log > div { filter: brightness(.82); }
+#log .turn { font-family: 'Lilita One', sans-serif; font-weight: 400; font-size: 17px; }
 
 /* ---------- Descripción de mejoras ---------- */
 

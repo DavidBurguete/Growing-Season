@@ -1,7 +1,8 @@
-import { Game } from './game.js';
+import { Game, DEFAULT_OPTIONS } from './game.js';
 import {
   renderAll, showDialog, hideDialog, setupDialogHtml, replaceDialogHtml,
   harvestStoreDialogHtml, warehouseDialogHtml, gameOverHtml,
+  seedmakerDialogHtml, fishDialogHtml, surrenderDialogHtml,
   menuHtml, hostFormHtml, joinFormHtml, connectingHtml, lobbyHtml, messageHtml,
 } from './render.js';
 import {
@@ -14,6 +15,7 @@ const DATA_FILES = {
   tools: 'data/tools.json',
   farm: 'data/farm-upgrades.json',
   mine: 'data/mine.json',
+  fishing: 'data/fishing.json',
 };
 
 const W = 1920, H = 923;
@@ -23,6 +25,16 @@ let lastSetup = [
   { name: 'Jugador 1', color: 'rojo' },
   { name: 'Jugador 2', color: 'verde' },
 ];
+let lastOptions = { ...DEFAULT_OPTIONS };
+let confirmSurrender = null; // jugador que ha pulsado "rendirse" y aún no lo ha confirmado
+
+// Lee las casillas de opciones del diálogo abierto
+function readOptions(prev) {
+  const extras = document.getElementById('opt-extras');
+  const fishing = document.getElementById('opt-fishing');
+  if (!extras || !fishing) return prev;
+  return { extras: extras.checked, mode: fishing.checked ? 'fishing' : 'mine' };
+}
 
 // ---------- estado de la red ----------
 // mode: 'local' (todos en este ordenador), 'host' (este navegador ejecuta la partida)
@@ -36,6 +48,7 @@ const net = {
   // anfitrión: jugadores de la sala (el 0 es él mismo) y espectadores
   players: [], // [{ name, color, conn }]
   spectators: [], // [conn]
+  options: { ...DEFAULT_OPTIONS }, // opciones elegidas por el anfitrión en la sala
 };
 const online = () => net.mode !== 'local';
 function myName() {
@@ -83,8 +96,11 @@ function update() {
   renderAll(game, { me: online() ? net.me : null });
   document.body.classList.toggle('watching', game.phase !== 'gameOver' && !myTurn());
   const pr = game.prompts[0];
-  if (game.phase === 'gameOver') showDialog(gameOverHtml(game, { canRestart: net.mode !== 'guest' }));
+  if (game.phase === 'gameOver') { confirmSurrender = null; showDialog(gameOverHtml(game, { canRestart: net.mode !== 'guest' })); }
+  else if (confirmSurrender !== null) showDialog(surrenderDialogHtml(game, confirmSurrender));
   else if (!myTurn()) hideDialog();
+  else if (pr?.type === 'seedmaker') showDialog(seedmakerDialogHtml(game, pr));
+  else if (pr?.type === 'fish') showDialog(fishDialogHtml(game));
   else if (pr?.type === 'chooseReplace') showDialog(replaceDialogHtml(game, pr));
   else if (pr?.type === 'harvestStore') showDialog(harvestStoreDialogHtml(game, pr));
   else if (pr?.type === 'chooseStored') showDialog(warehouseDialogHtml(game));
@@ -100,7 +116,7 @@ function clearBoard() {
 // ---------- partida local ----------
 
 function showSetup() {
-  showDialog(setupDialogHtml(data.config, lastSetup));
+  showDialog(setupDialogHtml(data.config, lastSetup, lastOptions));
 }
 
 function startLocalGame() {
@@ -113,7 +129,9 @@ function startLocalGame() {
     return;
   }
   lastSetup = setup;
-  game = new Game(data, setup);
+  lastOptions = readOptions(lastOptions);
+  confirmSurrender = null;
+  game = new Game(data, setup, lastOptions);
   window.game = game; // útil para depurar desde la consola
   update();
 }
@@ -122,7 +140,7 @@ function startLocalGame() {
 
 function leaveOnline() {
   net.peer?.destroy();
-  Object.assign(net, { mode: 'local', peer: null, code: '', me: null, hostConn: null, players: [], spectators: [] });
+  Object.assign(net, { mode: 'local', peer: null, code: '', me: null, hostConn: null, players: [], spectators: [], options: { ...lastOptions } });
 }
 
 function showMenu() {
@@ -190,6 +208,7 @@ function lobbyState(forSeat) {
     inviteHost: inviteHost(),
     players: net.players.map((p) => ({ name: p.name, color: p.color })),
     spectators: net.spectators.length,
+    options: net.options,
     me: forSeat,
     isHost: forSeat === 0,
   };
@@ -228,6 +247,12 @@ function hostMessage(conn, msg) {
     net.players[seat].color = msg.color;
     showLobby();
   }
+  // Rendirse: cada jugador solo puede rendirse a sí mismo, sea o no su turno
+  if (msg.t === 'act' && msg.act === 'surrenderYes' && game && seat >= 0) {
+    game.surrender(seat);
+    update();
+    return;
+  }
   // Solo se aceptan acciones del jugador al que le toca
   if (msg.t === 'act' && game && seat >= 0 && seat === game.current && GAME_ACTIONS[msg.act]) {
     GAME_ACTIONS[msg.act](msg.arg);
@@ -254,7 +279,9 @@ function hostConnClosed(conn) {
 function startOnlineGame() {
   if (net.mode !== 'host' || net.players.length < 2) return;
   const setup = net.players.map((p) => ({ name: p.name, color: p.color }));
-  game = new Game(data, setup);
+  lastOptions = { ...net.options };
+  confirmSurrender = null;
+  game = new Game(data, setup, net.options);
   window.game = game;
   update();
 }
@@ -337,6 +364,26 @@ const GAME_ACTIONS = {
   warehouse: () => game.openWarehouse(),
   stored: (i) => game.chooseStored(i),
   cancel: () => game.cancelPrompt(),
+  fish: () => game.goFish(),
+  fishMore: () => game.resolveFish(true),
+  fishStop: () => game.resolveFish(false),
+  smPlant: () => game.resolveSeedmaker('plant'),
+  smWarehouse: () => game.resolveSeedmaker('warehouse'),
+  smKeep: () => game.resolveSeedmaker('keep'),
+};
+
+// Rendirse: pide confirmación en este ordenador y, si se confirma, se aplica
+// (en local, al jugador del botón; online, siempre a este ordenador)
+const SURRENDER_ACTIONS = {
+  surrender: (i) => { if (game && game.phase !== 'gameOver') { confirmSurrender = online() ? net.me : i; update(); } },
+  surrenderNo: () => { confirmSurrender = null; update(); },
+  surrenderYes: (i) => {
+    confirmSurrender = null;
+    if (!game) return;
+    if (net.mode === 'guest') { send(net.hostConn, { t: 'act', act: 'surrenderYes' }); update(); return; }
+    game.surrender(net.mode === 'host' ? net.me : i);
+    update();
+  },
 };
 
 const MENU_ACTIONS = {
@@ -366,6 +413,7 @@ document.addEventListener('click', (e) => {
   const raw = el.dataset.i;
   const arg = raw !== undefined && raw !== '' && !isNaN(raw) ? Number(raw) : raw;
   if (MENU_ACTIONS[act]) { MENU_ACTIONS[act](arg); return; }
+  if (SURRENDER_ACTIONS[act]) { hideTip(); SURRENDER_ACTIONS[act](arg); return; }
   if (!game || !GAME_ACTIONS[act] || !myTurn()) return;
   hideTip();
   if (net.mode === 'guest') { send(net.hostConn, { t: 'act', act, arg }); return; }
@@ -385,6 +433,11 @@ document.addEventListener('change', (e) => {
   // Sala de espera: recordar la dirección de invitación aunque se repinte la sala
   if (e.target.id === 'invite-host') {
     try { localStorage.setItem('gs-invite-host', e.target.value.trim()); } catch { /* sin almacenamiento */ }
+  }
+  // Opciones de partida: en la configuración local o en la sala del anfitrión
+  if (e.target.id === 'opt-extras' || e.target.id === 'opt-fishing') {
+    if (net.mode === 'host' && !game) { net.options = readOptions(net.options); showLobby(); }
+    if (net.mode === 'local') lastOptions = readOptions(lastOptions);
   }
   // Sala de espera: cambiar mi color
   if (e.target.id === 'lobby-color') {

@@ -1,0 +1,14 @@
+{
+  "_doc": "Cartas de pesca (modalidad alternativa a la mina). 'fish' = peces de la parte inferior (dificultad; 0.5 = medio pez), 'coins' = monedas que da si se pesca. Las cantidades ('count') son provisionales.",
+  "cards": [
+    { "id": "fish-0.5-1", "image": "assets/img/fishing/1-coin-small-fish-half-fish.png", "fish": 0.5, "coins": 1, "count": 3 },
+    { "id": "fish-1-1",   "image": "assets/img/fishing/1-coin-small-fish.png",           "fish": 1,   "coins": 1, "count": 3 },
+    { "id": "fish-1-2",   "image": "assets/img/fishing/2-coin-small-fish.png",           "fish": 1,   "coins": 2, "count": 2 },
+    { "id": "fish-2-1",   "image": "assets/img/fishing/1-coin-fish.png",                 "fish": 2,   "coins": 1, "count": 2 },
+    { "id": "fish-2-2",   "image": "assets/img/fishing/2-coin-fish.png",                 "fish": 2,   "coins": 2, "count": 3 },
+    { "id": "fish-3-2",   "image": "assets/img/fishing/2-coin-eel.png",                  "fish": 3,   "coins": 2, "count": 2 },
+    { "id": "fish-3-3",   "image": "assets/img/fishing/3-coin-eel.png",                  "fish": 3,   "coins": 3, "count": 2 },
+    { "id": "fish-4-5",   "image": "assets/img/fishing/5-coin-fish.png",                 "fish": 4,   "coins": 5, "count": 2 },
+    { "id": "fish-5-8",   "image": "assets/img/fishing/8-coin-fish.png",                 "fish": 5,   "coins": 8, "count": 1 }
+  ]
+}

@@ -20,11 +20,19 @@ function expand(defs) {
 
 export const circlesOf = (seedDef) => seedDef.waterRewards.length + 1;
 const TOOL_NAME = { watering: 'regadera', sickle: 'hoz' };
+// 2.5 → "2,5"
+export const fmtFish = (n) => String(n).replace('.', ',');
+
+// Opciones de la partida: extras = usar las mejoras con estrella; mode = 'mine' o 'fishing'
+export const DEFAULT_OPTIONS = { extras: false, mode: 'mine' };
 
 export class Game {
-  constructor(data, playerSetup) {
+  constructor(data, playerSetup, options = {}) {
     this.data = data;
     this.cfg = data.config;
+    this.options = { ...DEFAULT_OPTIONS, ...options };
+    this.surrendered = null;
+    this.fishing = null; // salida de pesca en curso: { power, caught: [defs] }
     this.log = [];
     this.prompts = [];
     this.selection = [];
@@ -33,20 +41,23 @@ export class Game {
     this.lastRound = false;
     this.winners = [];
     this.turnNumber = 0;
-    this.farmPending = false; // mejoras de inicio de turno a medias (esperando al almacén)
+    this.farmStep = null; // paso de las mejoras de inicio de turno (se reanuda tras cada pregunta)
     // Huecos del mercado recién repuestos (la interfaz los anima y vacía la lista)
     this.fresh = [];
 
     const seedDefs = data.seeds.cards.filter((c) => !c.starter);
+    const allowed = (c) => this.options.extras || !c.extra;
+    const expedition = this.fishingMode ? data.fishing.cards : data.mine.cards;
     this.market = {
       seedDeck: shuffle(expand(seedDefs)),
       seedDiscard: [],
       seeds: Array(this.cfg.market.seeds).fill(null),
-      toolDeck: shuffle(expand(data.tools.shop)),
+      toolDeck: shuffle(expand(data.tools.shop.filter(allowed))),
       tools: Array(this.cfg.market.tools).fill(null),
-      farmDeck: shuffle(expand(data.farm.cards)),
+      farmDeck: shuffle(expand(data.farm.cards.filter(allowed))),
       farm: Array(this.cfg.market.farm).fill(null),
-      mineDeck: shuffle(expand(data.mine.cards)),
+      // En modo pesca, el mazo de la mina es el de pesca
+      mineDeck: shuffle(expand(expedition)),
       mineDiscard: [],
       mineRevealed: null,
       assortedReveal: null, // carta sacada con Semillas varias, pendiente de colocar
@@ -107,7 +118,11 @@ export class Game {
   // ---------- utilidades ----------
 
   get player() { return this.players[this.current]; }
-  say(msg, kind = 'info') { this.log.push({ msg, kind, turn: this.turnNumber }); }
+  get fishingMode() { return this.options.mode === 'fishing'; }
+  // who: índice del jugador al que se refiere la línea (para pintarla de su color)
+  say(msg, kind = 'info', who = this.players ? this.current : null) {
+    this.log.push({ msg, kind, turn: this.turnNumber, who });
+  }
   has(p, type) { return p.upgrades.some((u) => u.def.type === type); }
   findUpgrade(p, type) { return p.upgrades.find((u) => u.def.type === type); }
   freePlots(p) { return p.plots.map((pl, i) => (pl.crop ? -1 : i)).filter((i) => i >= 0); }
@@ -116,7 +131,7 @@ export class Game {
   gain(p, coins, why) {
     if (!coins) return;
     p.coins += coins;
-    this.say(`${p.name} gana ${coins} moneda${coins === 1 ? '' : 's'} (${why})`, 'coin');
+    this.say(`${p.name} gana ${coins} moneda${coins === 1 ? '' : 's'} (${why})`, 'coin', this.players.indexOf(p));
   }
 
   drawFrom(deckKey, discardKey) {
@@ -196,22 +211,30 @@ export class Game {
         this.market.seedDiscard.push(u.stored.def);
         u.stored = null;
       }
-      // A partir de ahora la semilladora replanta en cuanto haya una parcela libre
+      // A partir de ahora la semilladora puede replantar (al inicio del turno o en la compra)
       if (u.def.type === 'seedmaker' && u.stored) u.armed = true;
     }
-    this.runSeedmaker(p);
+    this.farmStep = 0;
+    this.continueFarm();
+  }
 
-    // Almacén: el jugador elige si planta y qué; al terminar sigue el resto de mejoras
-    if (this.has(p, 'warehouse') && p.warehouse.length && this.freePlots(p).length) {
-      this.farmPending = true;
-      this.prompts.push({ type: 'chooseStored' });
-      return;
+  // Semilladora → almacén → resto de mejoras. Si un paso hace una pregunta, se para
+  // y afterPrompt() lo reanuda en el paso siguiente.
+  continueFarm() {
+    const p = this.player;
+    while (this.farmStep !== null && this.farmStep < 3) {
+      const step = this.farmStep++;
+      if (step === 0) this.runSeedmaker(p);
+      if (step === 1 && this.has(p, 'warehouse') && p.warehouse.length && this.freePlots(p).length) {
+        this.prompts.push({ type: 'chooseStored' });
+      }
+      if (step === 2) this.processFarmRest(p);
+      if (this.prompts.length) return;
     }
-    this.processFarmRest(p);
+    this.farmStep = null;
   }
 
   processFarmRest(p) {
-    this.farmPending = false;
     const sprinklers = p.upgrades.filter((u) => u.def.type === 'sprinkler').length;
     for (let s = 0; s < sprinklers; s++) {
       for (const pl of p.plots) if (pl.crop && !this.isMature(pl.crop)) this.water(p, pl.crop, 'aspersor');
@@ -221,19 +244,65 @@ export class Game {
       p.plots.forEach((pl, i) => { if (pl.crop && this.isMature(pl.crop)) this.harvest(p, i, 'cosechadora'); });
     }
 
-    if (this.has(p, 'dogcat')) this.revealMine(p, 'perro y gato');
+    if (this.has(p, 'dogcat')) {
+      if (this.fishingMode) this.revealFishFree(p);
+      else this.revealMine(p, 'perro y gato');
+    }
   }
 
-  // Semilladora: si tiene un cultivo listo para replantar y hay parcela libre, lo planta
+  // Mejor parcela libre para un cultivo: primero una parcela extra cuyo bonus le corresponda,
+  // después una normal y, si no queda otra, cualquier parcela extra.
+  bestPlot(p, def) {
+    const free = this.freePlots(p);
+    const c = circlesOf(def);
+    return free.find((i) => p.plots[i].def?.circles.includes(c))
+      ?? free.find((i) => !p.plots[i].def)
+      ?? free[0] ?? null;
+  }
+
+  // Semilladora: solo actúa al empezar el turno y en la fase de compra, con un cultivo
+  // guardado en un turno anterior. Con almacén, el jugador puede elegir guardarlo allí.
   runSeedmaker(p) {
     const u = this.findUpgrade(p, 'seedmaker');
     if (!u?.stored || !u.armed) return;
-    const free = this.freePlots(p);
-    if (!free.length) return;
-    p.plots[free[0]].crop = this.makeCrop(u.stored.def);
-    this.say(`La semilladora replanta ${u.stored.def.name}`);
+    const canPlant = this.bestPlot(p, u.stored.def) !== null;
+    const warehouse = this.has(p, 'warehouse');
+    const askKey = `${this.turnNumber}:${this.phase}`;
+    if (warehouse && u.asked !== askKey) {
+      u.asked = askKey; // una pregunta por fase como mucho
+      this.prompts.push({ type: 'seedmaker', crop: u.stored, canPlant });
+      return;
+    }
+    if (canPlant && !warehouse) this.seedmakerPlant(p, u);
+  }
+
+  seedmakerPlant(p, u) {
+    const i = this.bestPlot(p, u.stored.def);
+    if (i === null) return;
+    p.plots[i].crop = this.makeCrop(u.stored.def);
+    this.say(`La semilladora replanta ${u.stored.def.name}${p.plots[i].def ? ` en la ${p.plots[i].def.name.toLowerCase()}` : ''}`);
     u.stored = null;
     u.armed = false;
+  }
+
+  // Respuesta a la semilladora: 'plant', 'warehouse' o 'keep'
+  resolveSeedmaker(choice) {
+    const pr = this.prompts[0];
+    if (!pr || pr.type !== 'seedmaker') return;
+    const p = this.player;
+    const u = this.findUpgrade(p, 'seedmaker');
+    if (choice === 'plant' && !pr.canPlant) return;
+    this.prompts.shift();
+    if (u?.stored) {
+      if (choice === 'plant') this.seedmakerPlant(p, u);
+      if (choice === 'warehouse') {
+        p.warehouse.push(u.stored.def);
+        this.say(`${u.stored.def.name} pasa de la semilladora al almacén`);
+        u.stored = null;
+        u.armed = false;
+      }
+    }
+    this.afterPrompt();
   }
 
   // ---------- fase de acciones ----------
@@ -252,7 +321,8 @@ export class Game {
       this.selection = this.selection.filter((id) => id !== cardUid);
       return;
     }
-    const max = Math.max(2, this.mineCost());
+    // En modo pesca se puede salir con tantas cartas como se quiera
+    const max = this.fishingMode ? this.player.hand.length : Math.max(2, this.mineCost());
     if (this.selection.length >= max) this.selection.shift();
     this.selection.push(cardUid);
   }
@@ -270,7 +340,7 @@ export class Game {
   }
 
   canMine() {
-    if (this.phase !== 'action' || this.prompts.length) return false;
+    if (this.fishingMode || this.phase !== 'action' || this.prompts.length) return false;
     const sel = this.selectedCards();
     return sel.length === this.mineCost() && sel.every((c) => !c.used);
   }
@@ -334,7 +404,6 @@ export class Game {
     if (plot.def && plot.def.circles.includes(circlesOf(crop.def))) { coins += plot.def.bonus; extras.push('parcela'); }
     this.gain(p, coins, `${why}: ${crop.def.name}${extras.length ? ' + ' + extras.join(' + ') : ''}`);
 
-    this.runSeedmaker(p); // la parcela ha quedado libre
     const storages = p.upgrades.filter((u) => (u.def.type === 'pickler' || u.def.type === 'seedmaker') && !u.stored);
     if (storages.length) {
       this.prompts.push({ type: 'harvestStore', crop, options: storages.map((u) => u.uid) });
@@ -378,6 +447,96 @@ export class Game {
     else this.say(`${p.name} no encuentra nada en la mina (${why})`);
   }
 
+  // ---------- pesca ----------
+
+  // Valor de pesca de unas cartas (las iniciales valen medio pez) + medio pez con el equipo
+  fishPower(cards, p = this.player) {
+    const base = cards.reduce((s, c) => s + (c.def.fish ?? 0), 0);
+    return base + (this.has(p, 'equipment') ? 0.5 : 0);
+  }
+
+  canFish() {
+    if (!this.fishingMode || this.phase !== 'action' || this.prompts.length) return false;
+    const sel = this.selectedCards();
+    return sel.length > 0 && sel.every((c) => !c.used);
+  }
+
+  goFish() {
+    if (!this.canFish()) return;
+    const p = this.player;
+    const cards = this.selectedCards();
+    const power = this.fishPower(cards);
+    for (const c of cards) this.discardFromHand(p, c);
+    this.selection = [];
+    this.fishing = { power, caught: [] };
+    this.say(`${p.name} sale a pescar con un valor de pesca de ${fmtFish(power)}`);
+    this.castLine();
+  }
+
+  // Voltea la carta de arriba del mazo de pesca y resuelve si se pesca o se escapa
+  castLine() {
+    const p = this.player;
+    const f = this.fishing;
+    const m = this.market;
+    m.mineUnder = m.mineRevealed;
+    const fish = this.drawFrom('mineDeck', 'mineDiscard');
+    if (!fish) { this.say('No quedan cartas de pesca'); this.endFishing(); return; }
+    m.mineRevealed = fish;
+    this.fresh.push('mine:0');
+    if (fish.fish <= f.power) {
+      f.power -= fish.fish;
+      f.caught.push(fish);
+      this.say(`${p.name} pesca un pez de ${fish.coins} moneda${fish.coins === 1 ? '' : 's'} (le queda ${fmtFish(f.power)} de valor de pesca)`);
+      const more = f.power > 0 && (m.mineDeck.length + m.mineDiscard.length) > 0;
+      if (more) this.prompts.push({ type: 'fish' });
+      else this.endFishing();
+    } else {
+      m.mineDiscard.push(fish);
+      const lost = f.caught.pop();
+      if (lost) {
+        m.mineDiscard.push(lost);
+        this.say(`¡Se escapa un pez de ${fmtFish(fish.fish)}, vuelca la barca y se escapa también el anterior!`);
+      } else {
+        this.say(`Se escapa el pez (necesitaba ${fmtFish(fish.fish)} de valor de pesca)`);
+      }
+      this.endFishing();
+    }
+  }
+
+  // Respuesta durante la pesca: seguir (true) o parar y cobrar (false)
+  resolveFish(keepGoing) {
+    const pr = this.prompts[0];
+    if (!pr || pr.type !== 'fish') return;
+    this.prompts.shift();
+    if (keepGoing) this.castLine();
+    else this.endFishing();
+    this.afterPrompt();
+    this.checkHandEmpty();
+  }
+
+  endFishing() {
+    const p = this.player;
+    const f = this.fishing;
+    this.fishing = null;
+    if (!f) return;
+    const coins = f.caught.reduce((s, c) => s + c.coins, 0);
+    this.gain(p, coins, `pesca: ${f.caught.length} pez${f.caught.length === 1 ? '' : 'es'}`);
+    this.market.mineDiscard.push(...f.caught);
+    if (!this.prompts.length) this.checkHandEmpty();
+  }
+
+  // Perro y gato en modo pesca: revela una carta y cobra sus monedas sin más
+  revealFishFree(p) {
+    const m = this.market;
+    m.mineUnder = m.mineRevealed;
+    const fish = this.drawFrom('mineDeck', 'mineDiscard');
+    if (!fish) return;
+    m.mineRevealed = fish;
+    m.mineDiscard.push(fish);
+    this.fresh.push('mine:0');
+    this.gain(p, fish.coins, 'perro y gato: pesca');
+  }
+
   // Botón "Terminar acciones": descarta toda la mano
   endActions() {
     if (this.phase !== 'action' || this.prompts.length) return;
@@ -390,6 +549,7 @@ export class Game {
   toBuyPhase() {
     this.selection = [];
     this.phase = 'buy';
+    this.runSeedmaker(this.player);
     this.checkAutoEnd();
   }
 
@@ -589,8 +749,8 @@ export class Game {
   }
 
   afterPrompt() {
-    if (this.prompts.length) return;
-    if (this.farmPending) this.processFarmRest(this.player);
+    if (this.prompts.length || this.phase === 'gameOver') return;
+    if (this.farmStep !== null) this.continueFarm();
     if (this.prompts.length) return;
     if (this.phase === 'buy') this.checkAutoEnd();
   }
@@ -618,6 +778,19 @@ export class Game {
     this.startTurn();
   }
 
+  // Rendirse: en 2 jugadores gana el otro
+  surrender(index) {
+    if (this.phase === 'gameOver' || !this.players[index]) return;
+    this.surrendered = index;
+    this.prompts = [];
+    this.fishing = null;
+    this.farmStep = null;
+    this.phase = 'gameOver';
+    this.winners = this.players.filter((_, i) => i !== index);
+    this.say(`${this.players[index].name} se rinde`, 'turn', index);
+    this.say(`¡${this.winners.map((p) => p.name).join(' y ')} gana${this.winners.length > 1 ? 'n' : ''} la partida!`, 'turn', this.players.indexOf(this.winners[0]));
+  }
+
   // Gana quien haya completado el tablero. Desempates: más monedas sobrantes,
   // después más cultivos plantados; si persiste, comparten la victoria.
   finish() {
@@ -630,6 +803,7 @@ export class Game {
     this.winners = cands.filter((p) => crops(p) === maxCrops);
     this.say(this.winners.length === 1
       ? `¡${this.winners[0].name} gana la partida!`
-      : `¡Victoria compartida entre ${this.winners.map((p) => p.name).join(' y ')}!`, 'turn');
+      : `¡Victoria compartida entre ${this.winners.map((p) => p.name).join(' y ')}!`, 'turn',
+    this.winners.length === 1 ? this.players.indexOf(this.winners[0]) : null);
   }
 }
