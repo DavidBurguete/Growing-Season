@@ -272,19 +272,18 @@ export class Game {
   }
 
   // Semilladora: solo actúa al empezar el turno y en la fase de compra, con un cultivo
-  // guardado en un turno anterior. Con almacén, el jugador puede elegir guardarlo allí.
+  // guardado en un turno anterior. Planta si hay parcela libre; si no, y hay almacén, lo guarda allí.
   runSeedmaker(p) {
     const u = this.findUpgrade(p, 'seedmaker');
     if (!u?.stored || !u.armed) return;
-    const canPlant = this.bestPlot(p, u.stored.def) !== null;
-    const warehouse = this.has(p, 'warehouse');
-    const askKey = `${this.turnNumber}:${this.phase}`;
-    if (warehouse && u.asked !== askKey) {
-      u.asked = askKey; // una pregunta por fase como mucho
-      this.prompts.push({ type: 'seedmaker', crop: u.stored, canPlant });
-      return;
+    if (this.bestPlot(p, u.stored.def) !== null) {
+      this.seedmakerPlant(p, u);
+    } else if (this.has(p, 'warehouse')) {
+      p.warehouse.push(u.stored.def);
+      this.say(`${u.stored.def.name} pasa de la semilladora al almacén`);
+      u.stored = null;
+      u.armed = false;
     }
-    if (canPlant && !warehouse) this.seedmakerPlant(p, u);
   }
 
   seedmakerPlant(p, u) {
@@ -294,26 +293,6 @@ export class Game {
     this.say(`La semilladora replanta ${u.stored.def.name}${p.plots[i].def ? ` en la ${p.plots[i].def.name.toLowerCase()}` : ''}`);
     u.stored = null;
     u.armed = false;
-  }
-
-  // Respuesta a la semilladora: 'plant', 'warehouse' o 'keep'
-  resolveSeedmaker(choice) {
-    const pr = this.prompts[0];
-    if (!pr || pr.type !== 'seedmaker') return;
-    const p = this.player;
-    const u = this.findUpgrade(p, 'seedmaker');
-    if (choice === 'plant' && !pr.canPlant) return;
-    this.prompts.shift();
-    if (u?.stored) {
-      if (choice === 'plant') this.seedmakerPlant(p, u);
-      if (choice === 'warehouse') {
-        p.warehouse.push(u.stored.def);
-        this.say(`${u.stored.def.name} pasa de la semilladora al almacén`);
-        u.stored = null;
-        u.armed = false;
-      }
-    }
-    this.afterPrompt();
   }
 
   // ---------- fase de acciones ----------
@@ -460,10 +439,11 @@ export class Game {
 
   // ---------- pesca ----------
 
-  // Valor de pesca de unas cartas (las iniciales valen medio pez) + medio pez con el equipo
+  // Valor de pesca de unas cartas (las iniciales valen medio pez)
   fishPower(cards, p = this.player) {
-    const base = cards.reduce((s, c) => s + (c.def.fish ?? 0), 0);
-    return base + (this.has(p, 'equipment') ? 0.5 : 0);
+    // El equipo de pesca/minería suma medio pez a cada carta (las iniciales pasan a valer 1)
+    const bonus = this.has(p, 'equipment') ? 0.5 : 0;
+    return cards.reduce((s, c) => s + (c.def.fish ?? 0) + bonus, 0);
   }
 
   canFish() {

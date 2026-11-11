@@ -1,11 +1,15 @@
 {
-  "_doc": "Cartas de herramienta (energía). 'water' = unidades de riego, 'sickle' = unidades de cosecha, 'fish' = valor de pesca (modo pesca), 'colors' = personaje(s) de la carta. Los colores: rojo=red-guy, rosa=blue-girl, morado=purple-girl, verde=yellow-guy. 'starters' son las cartas iniciales por color (con guante); 'shop' son las mejoras de la herrería. 'extra': true = mejora extra (estrella), solo si se activa al empezar.",
+  "_doc": "Cartas de herramienta (energía). 'water' = unidades de riego, 'sickle' = unidades de cosecha, 'fish' = valor de pesca (modo pesca), 'colors' = personaje(s) de la carta. Los colores: rojo/marron=red-guy, rosa/azul=blue-girl, morado/negro=purple-girl, verde/amarillo=yellow-guy. 'starters' son las cartas iniciales por color (con guante); 'shop' son las mejoras de la herrería. 'extra': true = mejora extra (estrella), solo si se activa al empezar.",
   "starterDeck": { "watering": 10, "sickle": 5 },
   "starters": {
     "rojo":   { "watering": "assets/img/tools/red-guy-watering-can.png",    "sickle": "assets/img/tools/red-guy-sickle.png" },
     "rosa":   { "watering": "assets/img/tools/blue-girl-watering-can.png",  "sickle": "assets/img/tools/blue-girl-sickle.png" },
     "morado": { "watering": "assets/img/tools/purple-girl-watering-can.png","sickle": "assets/img/tools/purple-girl-sickle.png" },
-    "verde":  { "watering": "assets/img/tools/yellow-guy-watering-can.png", "sickle": "assets/img/tools/yellow-guy-sickle.png" }
+    "verde":  { "watering": "assets/img/tools/yellow-guy-watering-can.png", "sickle": "assets/img/tools/yellow-guy-sickle.png" },
+    "negro":    { "watering": "assets/img/tools/purple-girl-watering-can.png","sickle": "assets/img/tools/purple-girl-sickle.png" },
+    "azul":     { "watering": "assets/img/tools/blue-girl-watering-can.png",  "sickle": "assets/img/tools/blue-girl-sickle.png" },
+    "amarillo": { "watering": "assets/img/tools/yellow-guy-watering-can.png", "sickle": "assets/img/tools/yellow-guy-sickle.png" },
+    "marron":   { "watering": "assets/img/tools/red-guy-watering-can.png",    "sickle": "assets/img/tools/red-guy-sickle.png" }
   },
   "starterValues": { "watering": { "water": 1, "sickle": 0, "fish": 0.5 }, "sickle": { "water": 0, "sickle": 1, "fish": 0.5 } },
   "shop": [

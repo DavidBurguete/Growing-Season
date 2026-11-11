@@ -1,8 +1,8 @@
-import { Game, DEFAULT_OPTIONS, forcesExtras } from './game.js';
+import { Game, DEFAULT_OPTIONS, forcesExtras, shuffle } from './game.js';
 import {
   renderAll, showDialog, hideDialog, setupDialogHtml, replaceDialogHtml,
   harvestStoreDialogHtml, warehouseDialogHtml, gameOverHtml,
-  seedmakerDialogHtml, fishDialogHtml, surrenderDialogHtml,
+  fishDialogHtml, surrenderDialogHtml,
   menuHtml, hostFormHtml, joinFormHtml, connectingHtml, lobbyHtml, messageHtml,
 } from './render.js';
 import {
@@ -60,6 +60,7 @@ const net = {
   // anfitrión: jugadores de la sala (el 0 es él mismo) y espectadores
   players: [], // [{ name, color, conn }]
   spectators: [], // [conn]
+  order: [], // orden de juego sorteado: order[asiento] = índice en la sala
   options: { ...DEFAULT_OPTIONS }, // opciones elegidas por el anfitrión en la sala
 };
 const online = () => net.mode !== 'local';
@@ -72,7 +73,7 @@ function rememberName(n) {
 
 async function loadData() {
   const entries = await Promise.all(Object.entries(DATA_FILES).map(async ([key, url]) => {
-    const res = await fetch(url);
+    const res = await fetch(url, { cache: 'no-cache' }); // siempre la última versión de los datos
     if (!res.ok) throw new Error(`No se pudo cargar ${url}`);
     return [key, await res.json()];
   }));
@@ -111,8 +112,7 @@ function update() {
   if (game.phase === 'gameOver') { confirmSurrender = null; showDialog(gameOverHtml(game, { canRestart: net.mode !== 'guest' })); }
   else if (confirmSurrender !== null) showDialog(surrenderDialogHtml(game, confirmSurrender));
   else if (!myTurn()) hideDialog();
-  else if (pr?.type === 'seedmaker') showDialog(seedmakerDialogHtml(game, pr));
-  else if (pr?.type === 'fish') showDialog(fishDialogHtml(game));
+  else if (pr?.type === 'fish') showDialog(fishDialogHtml(game), 'fishing');
   else if (pr?.type === 'chooseReplace') showDialog(replaceDialogHtml(game, pr));
   else if (pr?.type === 'harvestStore') showDialog(harvestStoreDialogHtml(game, pr));
   else if (pr?.type === 'chooseStored') showDialog(warehouseDialogHtml(game));
@@ -131,6 +131,11 @@ function showSetup() {
   showDialog(setupDialogHtml(data.config, lastSetup, lastOptions));
 }
 
+// Primera línea del registro (antes de "Turno de …"): el orden sorteado
+function logOrder(g, setup) {
+  g.log.unshift({ msg: `Orden de juego (por sorteo): ${setup.map((p) => p.name).join(', ')}`, kind: 'turn', turn: 0, who: null });
+}
+
 function startLocalGame() {
   const setup = [0, 1].map((i) => ({
     name: document.getElementById(`name-${i}`).value.trim() || `Jugador ${i + 1}`,
@@ -140,10 +145,13 @@ function startLocalGame() {
     alert('Cada jugador debe tener un color distinto.');
     return;
   }
-  lastSetup = setup;
+  lastSetup = setup; // el formulario conserva el orden escrito
   lastOptions = readOptions(lastOptions);
   confirmSurrender = null;
-  game = new Game(data, setup, lastOptions);
+  // Orden aleatorio: cada jugador conserva su nombre y color, solo cambia quién empieza
+  const order = shuffle([...setup]);
+  game = new Game(data, order, lastOptions);
+  logOrder(game, order);
   window.game = game; // útil para depurar desde la consola
   update();
 }
@@ -152,7 +160,7 @@ function startLocalGame() {
 
 function leaveOnline() {
   net.peer?.destroy();
-  Object.assign(net, { mode: 'local', peer: null, code: '', me: null, hostConn: null, players: [], spectators: [], options: { ...lastOptions } });
+  Object.assign(net, { mode: 'local', peer: null, code: '', me: null, hostConn: null, players: [], spectators: [], order: [], options: { ...lastOptions } });
 }
 
 function showMenu() {
@@ -213,6 +221,9 @@ function copyInviteLink() {
 
 const freeColor = () => Object.keys(data.config.colors).find((c) => !net.players.some((p) => p.color === c));
 const seatOf = (conn) => net.players.findIndex((p) => p.conn && p.conn === conn);
+// Los jugadores de la sala (net.players) conservan su índice; al empezar se sortea el orden
+// de juego. net.order[asientoDeJuego] = índice en la sala.
+const gameSeat = (lobbyIndex) => (game ? net.order.indexOf(lobbyIndex) : lobbyIndex);
 
 function lobbyState(forSeat) {
   return {
@@ -261,12 +272,12 @@ function hostMessage(conn, msg) {
   }
   // Rendirse: cada jugador solo puede rendirse a sí mismo, sea o no su turno
   if (msg.t === 'act' && msg.act === 'surrenderYes' && game && seat >= 0) {
-    game.surrender(seat);
+    game.surrender(gameSeat(seat));
     update();
     return;
   }
   // Solo se aceptan acciones del jugador al que le toca
-  if (msg.t === 'act' && game && seat >= 0 && seat === game.current && GAME_ACTIONS[msg.act]) {
+  if (msg.t === 'act' && game && seat >= 0 && gameSeat(seat) === game.current && GAME_ACTIONS[msg.act]) {
     GAME_ACTIONS[msg.act](msg.arg);
     hideTip();
     update();
@@ -290,17 +301,21 @@ function hostConnClosed(conn) {
 
 function startOnlineGame() {
   if (net.mode !== 'host' || net.players.length < 2) return;
-  const setup = net.players.map((p) => ({ name: p.name, color: p.color }));
+  // Orden aleatorio: cada ordenador conserva su nombre y color, solo cambia quién empieza
+  net.order = shuffle(net.players.map((_, i) => i));
+  const setup = net.order.map((i) => ({ name: net.players[i].name, color: net.players[i].color }));
   lastOptions = { ...net.options };
   confirmSurrender = null;
   game = new Game(data, setup, net.options);
+  logOrder(game, setup);
+  net.me = gameSeat(0);
   window.game = game;
   update();
 }
 
 function broadcastState() {
   const state = snapshot(game);
-  net.players.forEach((p, i) => send(p.conn, { t: 'state', state, me: i }));
+  net.players.forEach((p, i) => send(p.conn, { t: 'state', state, me: gameSeat(i) }));
   net.spectators.forEach((c) => send(c, { t: 'state', state, me: null }));
 }
 
@@ -379,9 +394,6 @@ const GAME_ACTIONS = {
   fish: () => game.goFish(),
   fishMore: () => game.resolveFish(true),
   fishStop: () => game.resolveFish(false),
-  smPlant: () => game.resolveSeedmaker('plant'),
-  smWarehouse: () => game.resolveSeedmaker('warehouse'),
-  smKeep: () => game.resolveSeedmaker('keep'),
 };
 
 // Rendirse: pide confirmación en este ordenador y, si se confirma, se aplica
@@ -412,6 +424,8 @@ const MENU_ACTIONS = {
     if (net.mode === 'host') {
       net.players = net.players.filter((p, i) => i === 0 || p.conn); // fuera los desconectados
       clearBoard();
+      net.order = [];
+      net.me = 0; // en la sala el anfitrión vuelve a ser el primero
       showLobby();
     }
     if (net.mode === 'local') { clearBoard(); showSetup(); }

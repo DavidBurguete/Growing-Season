@@ -92,11 +92,16 @@ function renderMarket(game, fresh) {
   const back = fishing ? IMG.fishBack : IMG.mineBack;
   const canGo = fishing ? game.canFish() : game.canMine();
   const power = fishing && canGo ? game.fishPower(game.selectedCards()) : 0;
+  // Durante una salida de pesca, el valor que queda se ve sobre el mazo hasta que termina
+  const trip = fishing ? game.fishing : null;
+  const fishBadge = trip
+    ? `<span class="uses-badge fish-left">🎣 queda ${fmtFish(trip.power)}</span>`
+    : canGo && fishing ? `<span class="uses-badge">🎣 ${fmtFish(power)}</span>` : '';
   const mineDeck = card({
     img: back, act: canGo ? (fishing ? 'fish' : 'mine') : '', cls: canGo ? 'hl' : '',
     badge: countBadge(m.mineDeck.length),
-    extra: canGo && fishing ? `<span class="uses-badge">🎣 ${fmtFish(power)}</span>` : '',
-    tip: fishing ? `<b>Pesca</b><br>${canGo ? `Pescar con valor ${fmtFish(power)}` : 'Selecciona las cartas sin usar con las que quieras pescar'}` : '',
+    extra: fishBadge,
+    tip: fishing ? `<b>Pesca</b><br>${trip ? `Valor de pesca restante: ${fmtFish(trip.power)}` : canGo ? `Pescar con valor ${fmtFish(power)}` : 'Selecciona las cartas sin usar con las que quieras pescar'}` : '',
   });
   // Mientras la carta nueva se anima, la anterior sigue visible debajo
   const mineDeal = dealt('mine', 0, FROM_DECK_LEFT(0));
@@ -277,12 +282,13 @@ function renderLog(game) {
 
 const overlay = () => document.getElementById('overlay');
 
-export function showDialog(html) {
+// variant: clase extra del fondo (p. ej. 'fishing' deja ver el mercado mientras se pesca)
+export function showDialog(html, variant = '') {
   overlay().innerHTML = `<div class="dialog">${html}</div>`;
-  overlay().classList.add('show');
+  overlay().className = `show ${variant}`;
 }
 export function hideDialog() {
-  overlay().classList.remove('show');
+  overlay().className = '';
   overlay().innerHTML = '';
 }
 
@@ -431,15 +437,6 @@ export function warehouseDialogHtml(game) {
       ${game.player.warehouse.map((d, i) => choice(d.image, 'stored', i, esc(d.name))).join('')}
     </div>
     <button class="btn secondary" data-act="cancel">No plantar</button>`;
-}
-
-export function seedmakerDialogHtml(game, pr) {
-  return `
-    <h2>Semilladora: ¿qué haces con ${esc(pr.crop.def.name)}?</h2>
-    <div class="store-source">${card({ img: pr.crop.def.image })}</div>
-    ${pr.canPlant ? '<button class="btn" data-act="smPlant">Plantar</button>' : '<p>No hay ninguna parcela libre.</p>'}
-    <button class="btn" data-act="smWarehouse">Guardar en el almacén</button>
-    <button class="btn secondary" data-act="smKeep">Dejar en la semilladora</button>`;
 }
 
 export function fishDialogHtml(game) {

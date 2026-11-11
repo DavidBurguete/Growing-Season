@@ -85,6 +85,22 @@
     "verde": {
       "label": "Verde",
       "hex": "#4aa53a"
+    },
+    "negro": {
+      "label": "Negro",
+      "hex": "#2e2a28"
+    },
+    "azul": {
+      "label": "Azul",
+      "hex": "#2f6fd0"
+    },
+    "amarillo": {
+      "label": "Amarillo",
+      "hex": "#d9a514"
+    },
+    "marron": {
+      "label": "Marrón",
+      "hex": "#8a5428"
     }
   },
   "maxUpgrades": 6,

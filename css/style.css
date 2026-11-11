@@ -6,6 +6,10 @@
   --hl-glow: rgba(255, 225, 77, .85);
   --danger: #d8402f;
   --card-radius: 8px;
+  /* Capas: la interfaz del juego queda siempre por debajo de los desplegables y diálogos */
+  --z-popup: 30;   /* desplegable del descarte */
+  --z-overlay: 40; /* diálogos */
+  --z-tooltip: 50; /* descripciones al pasar el ratón */
 }
 
 * { box-sizing: border-box; }
@@ -193,7 +197,11 @@ img { -webkit-user-drag: none; }
 }
 #player-0 { left: 14px; }
 #player-1 { left: 976px; }
-.player-area.inactive .hand-row, .player-area.inactive .farm-row { opacity: .8; }
+/* Se atenúan las cartas, no las filas: una opacidad en la fila crearía un contexto de apilado
+   que dejaría el desplegable del descarte por debajo de otros elementos */
+.player-area.inactive .hand-row > .card, .player-area.inactive .hand-slots > .card,
+.player-area.inactive .discard > .card, .player-area.inactive .hand-row > .arrow,
+.player-area.inactive .farm-row { opacity: .8; }
 
 .banner {
   position: relative;
@@ -302,15 +310,17 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
   justify-content: space-between;
   --w: 96px; --h: 134px;
 }
-/* Huecos de mejora 7.º y 8.º (partida larga): debajo de las dos cartas exteriores de la granja */
+/* Huecos de mejora 7.º y 8.º (partida larga): debajo de las tres cartas exteriores,
+   centrados entre sus huecos (forma de W) */
 .farm-row.more-upgrades {
   position: absolute;
   top: calc(100% - 12px);
   margin: 0;
-  gap: calc((930px - 9 * var(--w)) / 8);
+  --gap: calc((930px - 9 * var(--w)) / 8);
+  gap: var(--gap);
 }
-#player-0 .more-upgrades { left: 0; }
-#player-1 .more-upgrades { right: 0; flex-direction: row-reverse; }
+#player-0 .more-upgrades { left: calc((var(--w) + var(--gap)) / 2); }
+#player-1 .more-upgrades { right: calc((var(--w) + var(--gap)) / 2); flex-direction: row-reverse; }
 
 .plot { position: relative; }
 .plot .crop {
@@ -364,7 +374,7 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
   position: absolute;
   bottom: calc(100% + 12px);
   right: -10px;
-  z-index: 30;
+  z-index: var(--z-popup);
   padding: 10px;
   grid-template-columns: repeat(5, 52px);
   gap: 6px;
@@ -412,7 +422,7 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
 
 #tooltip {
   position: fixed;
-  z-index: 50;
+  z-index: var(--z-tooltip);
   display: none;
   max-width: 260px;
   padding: 8px 12px;
@@ -432,13 +442,20 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
 #overlay {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: var(--z-overlay);
   display: none;
   align-items: center;
   justify-content: center;
   background: rgba(20, 30, 50, .55);
 }
 #overlay.show { display: flex; }
+/* Pescando: el diálogo baja y el mercado queda a la vista (valor restante sobre el mazo) */
+#overlay.fishing {
+  align-items: flex-end;
+  padding-bottom: 3vh;
+  background: linear-gradient(transparent 0 24%, rgba(20, 30, 50, .55) 34%);
+}
+.uses-badge.fish-left { background: var(--hl); color: #2b1d05; border: 2px solid #2b1d05; font-size: 16px; }
 .dialog {
   min-width: 420px;
   max-width: 92vw;
