@@ -19,9 +19,6 @@ function expand(defs) {
 }
 
 export const circlesOf = (seedDef) => seedDef.waterRewards.length + 1;
-const TOOL_NAME = { watering: 'regadera', sickle: 'hoz' };
-// 2.5 → "2,5"
-export const fmtFish = (n) => String(n).replace('.', ',');
 
 // Opciones de la partida: extras = usar las mejoras con estrella; mode = 'mine' o 'fishing';
 // length = duración ('short', 'normal' o 'long'), que decide el tablero
@@ -85,7 +82,8 @@ export class Game {
     return [...shuffle(list.slice(0, k)), ...list.slice(k)];
   }
 
-  createPlayer({ name, color }, reward = {}) {
+  // cpu: nivel de la CPU que lo controla ('easy', 'medium', 'hard') o null si es humano
+  createPlayer({ name, color, cpu = null }, reward = {}) {
     const t = this.data.tools;
     const deck = [];
     for (const type of ['watering', 'sickle']) {
@@ -93,6 +91,7 @@ export class Game {
         deck.push(this.makeTool({
           id: `starter-${type}`,
           name: type === 'watering' ? 'Regadera' : 'Hoz',
+          name_en: type === 'watering' ? 'Watering Can' : 'Sickle',
           image: t.starters[color][type],
           ...t.starterValues[type],
           starter: type,
@@ -102,7 +101,7 @@ export class Game {
     const plots = [];
     for (let i = 0; i < this.cfg.basePlots; i++) plots.push({ uid: uid(), def: null, crop: null });
     const p = {
-      name, color, coins: this.cfg.startingCoins + (reward.coins ?? 0),
+      name, color, cpu, coins: this.cfg.startingCoins + (reward.coins ?? 0),
       deck: shuffle(deck), discard: [], hand: [],
       plots, upgrades: [], warehouse: [], board: 0,
       pendingReplace: { watering: 0, sickle: 0 },
@@ -130,19 +129,23 @@ export class Game {
   get boardSpaces() { return this.boardDef.spaces; }
   // La partida larga tiene más huecos de mejora (7.º y 8.º)
   get maxUpgrades() { return this.boardDef.maxUpgrades ?? this.cfg.maxUpgrades; }
+  // Línea del registro: clave de i18n.js ("log.<key>") y parámetros; cada pantalla la traduce
+  // a su idioma. Los parámetros pueden ser números, nombres, cartas (se usa su nombre traducido)
+  // o { key, params } para un texto traducido anidado.
   // who: índice del jugador al que se refiere la línea (para pintarla de su color)
-  say(msg, kind = 'info', who = this.players ? this.current : null) {
-    this.log.push({ msg, kind, turn: this.turnNumber, who });
+  say(key, params = {}, kind = 'info', who = this.players ? this.current : null) {
+    this.log.push({ key, params, kind, turn: this.turnNumber, who });
   }
   has(p, type) { return p.upgrades.some((u) => u.def.type === type); }
   findUpgrade(p, type) { return p.upgrades.find((u) => u.def.type === type); }
   freePlots(p) { return p.plots.map((pl, i) => (pl.crop ? -1 : i)).filter((i) => i >= 0); }
   isMature(crop) { return crop.water >= circlesOf(crop.def); }
   idle() { return !this.prompts.length && (this.phase === 'action' || this.phase === 'buy'); }
+  // why: { key, params } con el motivo (se traduce al pintar)
   gain(p, coins, why) {
     if (!coins) return;
     p.coins += coins;
-    this.say(`${p.name} gana ${coins} moneda${coins === 1 ? '' : 's'} (${why})`, 'coin', this.players.indexOf(p));
+    this.say('gain', { name: p.name, coins, why }, 'coin', this.players.indexOf(p));
   }
 
   drawFrom(deckKey, discardKey) {
@@ -173,7 +176,7 @@ export class Game {
   toDiscard(p, card) {
     if (card.starter && p.pendingReplace[card.starter] > 0) {
       p.pendingReplace[card.starter]--;
-      this.say(`Se retira una ${TOOL_NAME[card.starter]} inicial (sustitución pendiente)`);
+      this.say('replacePending', { tool: card.starter });
       return;
     }
     p.discard.push(card);
@@ -186,14 +189,14 @@ export class Game {
     const p = this.player;
     this.phase = 'action';
     this.selection = [];
-    this.say(`— Turno de ${p.name} —`, 'turn');
+    this.say('turn', { name: p.name }, 'turn');
 
     for (let i = 0; i < this.cfg.handSize; i++) {
       if (!p.deck.length) {
         if (!p.discard.length) break;
         p.deck = shuffle(p.discard);
         p.discard = [];
-        this.say(`${p.name} baraja su descarte`);
+        this.say('shuffle', { name: p.name });
       }
       const card = p.deck.pop();
       card.waterLeft = card.def.water;
@@ -211,14 +214,14 @@ export class Game {
       if (u.def.type !== 'animal') continue;
       const v = u.def.values[u.step % u.def.values.length];
       u.step++;
-      this.gain(p, v + fodder, `${u.def.name}${fodder ? ' + pienso' : ''}`);
+      this.gain(p, v + fodder, { key: 'why.animal', params: { animal: u.def, fodder: !!fodder } });
     }
 
     for (const u of p.upgrades) {
       if (u.def.type === 'pickler' && u.stored) {
         const c = circlesOf(u.stored.def);
         const row = u.def.table.find((r) => r.circles.includes(c));
-        this.gain(p, row ? row.coins : 0, `encurtidora: ${u.stored.def.name}`);
+        this.gain(p, row ? row.coins : 0, { key: 'why.pickler', params: { crop: u.stored.def } });
         this.market.seedDiscard.push(u.stored.def);
         u.stored = null;
       }
@@ -248,16 +251,16 @@ export class Game {
   processFarmRest(p) {
     const sprinklers = p.upgrades.filter((u) => u.def.type === 'sprinkler').length;
     for (let s = 0; s < sprinklers; s++) {
-      for (const pl of p.plots) if (pl.crop && !this.isMature(pl.crop)) this.water(p, pl.crop, 'aspersor');
+      for (const pl of p.plots) if (pl.crop && !this.isMature(pl.crop)) this.water(p, pl.crop, 'sprinkler');
     }
 
     if (this.has(p, 'harvester')) {
-      p.plots.forEach((pl, i) => { if (pl.crop && this.isMature(pl.crop)) this.harvest(p, i, 'cosechadora'); });
+      p.plots.forEach((pl, i) => { if (pl.crop && this.isMature(pl.crop)) this.harvest(p, i, 'harvester'); });
     }
 
     if (this.has(p, 'dogcat')) {
       if (this.fishingMode) this.revealFishFree(p);
-      else this.revealMine(p, 'perro y gato');
+      else this.revealMine(p, 'dogcat');
     }
   }
 
@@ -280,7 +283,7 @@ export class Game {
       this.seedmakerPlant(p, u);
     } else if (this.has(p, 'warehouse')) {
       p.warehouse.push(u.stored.def);
-      this.say(`${u.stored.def.name} pasa de la semilladora al almacén`);
+      this.say('seedmakerToWarehouse', { crop: u.stored.def });
       u.stored = null;
       u.armed = false;
     }
@@ -290,7 +293,7 @@ export class Game {
     const i = this.bestPlot(p, u.stored.def);
     if (i === null) return;
     p.plots[i].crop = this.makeCrop(u.stored.def);
-    this.say(`La semilladora replanta ${u.stored.def.name}${p.plots[i].def ? ` en la ${p.plots[i].def.name.toLowerCase()}` : ''}`);
+    this.say('seedmakerPlant', { crop: u.stored.def, plot: p.plots[i].def });
     u.stored = null;
     u.armed = false;
   }
@@ -347,10 +350,10 @@ export class Game {
     card.used = true;
     if (action === 'water') {
       card.waterLeft--;
-      this.water(p, p.plots[plotIndex].crop, 'riego');
+      this.water(p, p.plots[plotIndex].crop, 'water');
     } else {
       card.sickleLeft--;
-      this.harvest(p, plotIndex, 'cosecha');
+      this.harvest(p, plotIndex, 'harvest');
     }
     if (card.waterLeft <= 0 && card.sickleLeft <= 0) this.discardFromHand(p, card);
     this.checkHandEmpty();
@@ -374,25 +377,28 @@ export class Game {
     if (this.phase === 'action' && !this.player.hand.length) this.toBuyPhase();
   }
 
+  // why: 'water' (riego con una carta) o 'sprinkler' (aspersor)
   water(p, crop, why) {
     crop.water++;
     const max = circlesOf(crop.def);
     if (crop.water < max) {
-      this.gain(p, crop.def.waterRewards[crop.water - 1], `${why}: ${crop.def.name}`);
+      this.gain(p, crop.def.waterRewards[crop.water - 1], { key: `why.${why}`, params: { crop: crop.def } });
     } else {
-      this.say(`${crop.def.name} está listo para cosechar`);
+      this.say('ready', { crop: crop.def });
     }
   }
 
+  // why: 'harvest' (con una hoz) o 'harvester' (cosechadora)
   harvest(p, plotIndex, why) {
     const plot = p.plots[plotIndex];
     const crop = plot.crop;
     plot.crop = null;
     let coins = crop.def.harvest;
-    const extras = [];
-    if (this.has(p, 'fertiliser')) { coins += 1; extras.push('abono'); }
-    if (plot.def && plot.def.circles.includes(circlesOf(crop.def))) { coins += plot.def.bonus; extras.push('parcela'); }
-    this.gain(p, coins, `${why}: ${crop.def.name}${extras.length ? ' + ' + extras.join(' + ') : ''}`);
+    const fert = this.has(p, 'fertiliser');
+    if (fert) coins += 1;
+    const bonus = !!plot.def && plot.def.circles.includes(circlesOf(crop.def));
+    if (bonus) coins += plot.def.bonus;
+    this.gain(p, coins, { key: 'why.harvest', params: { how: why, crop: crop.def, fert, plot: bonus } });
 
     const storages = p.upgrades.filter((u) => (u.def.type === 'pickler' || u.def.type === 'seedmaker') && !u.stored);
     if (storages.length) {
@@ -410,7 +416,7 @@ export class Game {
     if (u && !u.stored) {
       u.stored = pr.crop;
       u.armed = false; // se replanta a partir del próximo turno
-      this.say(`${pr.crop.def.name} va a ${u.def.name.toLowerCase()}`);
+      this.say('store', { crop: pr.crop.def, upgrade: u.def });
     } else {
       this.market.seedDiscard.push(pr.crop.def);
     }
@@ -422,10 +428,11 @@ export class Game {
     const p = this.player;
     for (const c of this.selectedCards()) this.discardFromHand(p, c);
     this.selection = [];
-    this.revealMine(p, 'mina');
+    this.revealMine(p, 'mine');
     this.checkHandEmpty();
   }
 
+  // why: 'mine' (ir a la mina) o 'dogcat' (perro y gato)
   revealMine(p, why) {
     const m = this.market;
     if (m.mineRevealed) m.mineDiscard.push(m.mineRevealed);
@@ -433,8 +440,8 @@ export class Game {
     m.mineRevealed = this.drawFrom('mineDeck', 'mineDiscard');
     if (!m.mineRevealed) return;
     this.fresh.push('mine:0');
-    if (m.mineRevealed.coins) this.gain(p, m.mineRevealed.coins, why);
-    else this.say(`${p.name} no encuentra nada en la mina (${why})`);
+    if (m.mineRevealed.coins) this.gain(p, m.mineRevealed.coins, { key: `why.${why}` });
+    else this.say('mineNothing', { name: p.name, why: { key: `why.${why}` } });
   }
 
   // ---------- pesca ----------
@@ -460,7 +467,7 @@ export class Game {
     for (const c of cards) this.discardFromHand(p, c);
     this.selection = [];
     this.fishing = { power, caught: [] };
-    this.say(`${p.name} sale a pescar con un valor de pesca de ${fmtFish(power)}`);
+    this.say('fishOut', { name: p.name, power });
     this.castLine();
   }
 
@@ -471,13 +478,13 @@ export class Game {
     const m = this.market;
     m.mineUnder = m.mineRevealed;
     const fish = this.drawFrom('mineDeck', 'mineDiscard');
-    if (!fish) { this.say('No quedan cartas de pesca'); this.endFishing(); return; }
+    if (!fish) { this.say('fishNoCards'); this.endFishing(); return; }
     m.mineRevealed = fish;
     this.fresh.push('mine:0');
     if (fish.fish <= f.power) {
       f.power -= fish.fish;
       f.caught.push(fish);
-      this.say(`${p.name} pesca un pez de ${fish.coins} moneda${fish.coins === 1 ? '' : 's'} (le queda ${fmtFish(f.power)} de valor de pesca)`);
+      this.say('fishCaught', { name: p.name, coins: fish.coins, left: f.power });
       const more = f.power > 0 && (m.mineDeck.length + m.mineDiscard.length) > 0;
       if (more) this.prompts.push({ type: 'fish' });
       else this.endFishing();
@@ -486,9 +493,9 @@ export class Game {
       const lost = f.caught.pop();
       if (lost) {
         m.mineDiscard.push(lost);
-        this.say(`¡Se escapa un pez de ${fmtFish(fish.fish)}, vuelca la barca y se escapa también el anterior!`);
+        this.say('fishCapsize', { fish: fish.fish });
       } else {
-        this.say(`Se escapa el pez (necesitaba ${fmtFish(fish.fish)} de valor de pesca)`);
+        this.say('fishEscape', { fish: fish.fish });
       }
       this.endFishing();
     }
@@ -511,12 +518,12 @@ export class Game {
     this.fishing = null;
     if (!f) return;
     const coins = f.caught.reduce((s, c) => s + c.coins, 0);
-    this.gain(p, coins, `pesca: ${f.caught.length} pez${f.caught.length === 1 ? '' : 'es'}`);
+    this.gain(p, coins, { key: 'why.fishing', params: { n: f.caught.length } });
     this.market.mineDiscard.push(...f.caught);
     if (!this.prompts.length) this.checkHandEmpty();
   }
 
-  // Perro y gato en modo pesca: revela una carta y cobra sus monedas sin más
+  // Perro y gato en modo pesca: revela una carta y cobra sus monedas si el pez es de 2 o menos
   revealFishFree(p) {
     const m = this.market;
     m.mineUnder = m.mineRevealed;
@@ -525,7 +532,9 @@ export class Game {
     m.mineRevealed = fish;
     m.mineDiscard.push(fish);
     this.fresh.push('mine:0');
-    this.gain(p, fish.coins, 'perro y gato: pesca');
+    // El gato solo pesca peces de 2 o menos; si es más grande, se escapa
+    if (fish.fish <= 2) this.gain(p, fish.coins, { key: 'why.dogcatFish' });
+    else this.say('catEscape', { fish: fish.fish });
   }
 
   // Botón "Terminar acciones": descarta toda la mano
@@ -601,7 +610,7 @@ export class Game {
     const free = this.freePlots(p);
     if (free.length === 0) {
       p.warehouse.push(def);
-      this.say(`${def.name} se guarda en el almacén`);
+      this.say('toWarehouse', { seed: def });
       return;
     }
     if (free.length === 1 && !alwaysAsk) {
@@ -617,7 +626,7 @@ export class Game {
     const def = this.market.seeds[i];
     this.market.seeds[i] = null;
     p.coins -= def.cost;
-    this.say(`${p.name} compra ${def.name} por ${def.cost}`);
+    this.say('buy', { name: p.name, card: def, cost: def.cost });
     this.placeSeed(p, def);
     this.afterPrompt();
   }
@@ -628,7 +637,7 @@ export class Game {
     const u = this.findUpgrade(p, 'assorted');
     const def = this.drawFrom('seedDeck', 'seedDiscard');
     p.coins -= u.def.cost ?? 1;
-    this.say(`${p.name} usa Semillas varias y obtiene ${def.name}`);
+    this.say('assorted', { name: p.name, seed: def });
     // Se muestra bajo el mazo hasta colocarla (o, si va al almacén, hasta el final del turno)
     this.market.assortedReveal = def;
     this.fresh.push('assorted:0');
@@ -667,7 +676,7 @@ export class Game {
     p.plots[plotIndex].crop = this.makeCrop(pr.seed);
     if (pr.source === 'warehouse') {
       p.warehouse.splice(pr.storedIndex, 1);
-      this.say(`${p.name} planta ${pr.seed.name} desde el almacén`);
+      this.say('plantStored', { name: p.name, seed: pr.seed });
     }
     if (pr.source === 'assorted') this.market.assortedReveal = null;
     this.afterPrompt();
@@ -679,7 +688,7 @@ export class Game {
     const def = this.market.tools[i];
     this.market.tools[i] = null;
     p.coins -= def.cost;
-    this.say(`${p.name} compra ${def.name} por ${def.cost}`);
+    this.say('buy', { name: p.name, card: def, cost: def.cost });
     const opts = this.toolReplaceOptions(p, def);
     if (opts.length === 1) this.replaceStarter(p, opts[0], def);
     else this.prompts.push({ type: 'chooseReplace', tool: def, options: opts });
@@ -702,10 +711,10 @@ export class Game {
     const idx = p.discard.findIndex((c) => c.starter === type);
     if (idx >= 0) {
       p.discard.splice(idx, 1);
-      this.say(`${def.name} sustituye a una ${TOOL_NAME[type]} inicial`);
+      this.say('replaced', { card: def, tool: type });
     } else {
       p.pendingReplace[type]++;
-      this.say(`${def.name} sustituirá a la próxima ${TOOL_NAME[type]} inicial que llegue al descarte`);
+      this.say('replaceLater', { card: def, tool: type });
     }
     p.discard.push(this.makeTool(def));
   }
@@ -716,7 +725,7 @@ export class Game {
     p.coins -= this.cfg.coinsPerBoardSpace;
     const space = this.boardSpaces[p.board];
     p.board++;
-    this.say(`${p.name} coloca una moneda de 10 en la casilla ${p.board}`, 'coin');
+    this.say('advance', { name: p.name, n: p.board }, 'coin');
     if (space.reward === 'farm' && this.market.farm.some(Boolean) && p.upgrades.length < this.maxUpgrades) {
       this.prompts.push({ type: 'chooseFarm' });
     }
@@ -727,8 +736,8 @@ export class Game {
   // Casilla de hoz/regadera x3: el jugador se lleva gratis las cartas que haya en la herrería
   takeShopTools(p) {
     const slots = this.market.tools.map((d, i) => (d ? i : -1)).filter((i) => i >= 0);
-    if (!slots.length) { this.say('La herrería está vacía: no hay cartas que llevarse'); return; }
-    this.say(`${p.name} se lleva gratis las cartas de la herrería`);
+    if (!slots.length) { this.say('smithEmpty'); return; }
+    this.say('smithGift', { name: p.name });
     this.toolGift.push(...slots);
     this.continueToolGift();
   }
@@ -744,7 +753,7 @@ export class Game {
       if (!def) continue;
       const opts = this.toolReplaceOptions(p, def);
       if (!opts.length) {
-        this.say(`${def.name} se queda en la herrería (no queda ninguna carta inicial que sustituir)`);
+        this.say('giftStays', { card: def });
         continue;
       }
       if (opts.length > 1) {
@@ -769,7 +778,7 @@ export class Game {
       upgrade.plotIndex = p.plots.length - 1;
     }
     p.upgrades.push(upgrade);
-    this.say(`${p.name} consigue la mejora ${def.name}`);
+    this.say('upgrade', { name: p.name, card: def });
     this.runSeedmaker(p); // una parcela nueva también cuenta como parcela libre
     this.afterPrompt();
   }
@@ -796,7 +805,7 @@ export class Game {
     this.refillMarket();
     if (p.board >= this.boardSpaces.length && !this.lastRound) {
       this.lastRound = true;
-      this.say(`¡${p.name} ha completado el tablero! Última ronda.`, 'turn');
+      this.say('boardDone', { name: p.name }, 'turn');
     }
     const next = (this.current + 1) % this.players.length;
     if (this.lastRound && next === 0) return this.finish();
@@ -813,8 +822,8 @@ export class Game {
     this.farmStep = null;
     this.phase = 'gameOver';
     this.winners = this.players.filter((_, i) => i !== index);
-    this.say(`${this.players[index].name} se rinde`, 'turn', index);
-    this.say(`¡${this.winners.map((p) => p.name).join(' y ')} gana${this.winners.length > 1 ? 'n' : ''} la partida!`, 'turn', this.players.indexOf(this.winners[0]));
+    this.say('surrender', { name: this.players[index].name }, 'turn', index);
+    this.say('wins', { names: this.winners.map((p) => p.name) }, 'turn', this.players.indexOf(this.winners[0]));
   }
 
   // Gana quien haya completado el tablero. Desempates: más monedas sobrantes,
@@ -827,9 +836,8 @@ export class Game {
     cands = cands.filter((p) => p.coins === maxCoins);
     const maxCrops = Math.max(...cands.map(crops));
     this.winners = cands.filter((p) => crops(p) === maxCrops);
-    this.say(this.winners.length === 1
-      ? `¡${this.winners[0].name} gana la partida!`
-      : `¡Victoria compartida entre ${this.winners.map((p) => p.name).join(' y ')}!`, 'turn',
-    this.winners.length === 1 ? this.players.indexOf(this.winners[0]) : null);
+    const names = this.winners.map((p) => p.name);
+    this.say(names.length === 1 ? 'wins' : 'sharedWin', { names }, 'turn',
+      names.length === 1 ? this.players.indexOf(this.winners[0]) : null);
   }
 }

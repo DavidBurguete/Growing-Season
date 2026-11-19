@@ -1,5 +1,5 @@
 {
-  "_doc": "Parámetros generales de la partida (modo 2 jugadores). 'boards': un tablero por duración de partida; cada casilla tiene su centro (x, y en % de la imagen) y su recompensa: 'farm' = mejora de granja (granero), 'tools' = las cartas de la herrería gratis (hoz/regadera x3), null = nada. 'spaceSize' = diámetro de la casilla en % del ancho. 'maxUpgrades' (opcional) sustituye al máximo general de mejoras por jugador.",
+  "_doc": "Parámetros generales de la partida (modo 2 jugadores). 'boards': un tablero por duración de partida; cada casilla tiene su centro (x, y en % de la imagen) y su recompensa: 'farm' = mejora de granja (granero), 'tools' = las cartas de la herrería gratis (hoz/regadera x3), null = nada. 'spaceSize' = diámetro de la casilla en % del ancho. 'maxUpgrades' (opcional) sustituye al máximo general de mejoras por jugador. 'label_en': nombre en inglés de colores y tableros.",
   "startingCoins": 0,
   "handSize": 5,
   "basePlots": 3,
@@ -13,7 +13,7 @@
   },
   "boards": {
     "short": {
-      "label": "Corta",
+      "label": "Corta", "label_en": "Quick",
       "image": "assets/img/boards/short-game.png",
       "width": 3200, "height": 554,
       "spaceSize": 7.75,
@@ -27,7 +27,7 @@
       ]
     },
     "normal": {
-      "label": "Normal",
+      "label": "Normal", "label_en": "Normal",
       "image": "assets/img/boards/normal-game.png",
       "width": 3200, "height": 559,
       "spaceSize": 7.75,
@@ -45,7 +45,7 @@
       ]
     },
     "long": {
-      "label": "Larga",
+      "label": "Larga", "label_en": "Long",
       "image": "assets/img/boards/long-game.png",
       "maxUpgrades": 8,
       "width": 3200, "height": 536,
@@ -71,35 +71,35 @@
   },
   "colors": {
     "rojo": {
-      "label": "Rojo",
+      "label": "Rojo", "label_en": "Red",
       "hex": "#d8402f"
     },
     "rosa": {
-      "label": "Rosa",
+      "label": "Rosa", "label_en": "Pink",
       "hex": "#e46fa8"
     },
     "morado": {
-      "label": "Morado",
+      "label": "Morado", "label_en": "Purple",
       "hex": "#7e3fb0"
     },
     "verde": {
-      "label": "Verde",
+      "label": "Verde", "label_en": "Green",
       "hex": "#4aa53a"
     },
     "negro": {
-      "label": "Negro",
+      "label": "Negro", "label_en": "Black",
       "hex": "#2e2a28"
     },
     "azul": {
-      "label": "Azul",
+      "label": "Azul", "label_en": "Blue",
       "hex": "#2f6fd0"
     },
     "amarillo": {
-      "label": "Amarillo",
+      "label": "Amarillo", "label_en": "Yellow",
       "hex": "#d9a514"
     },
     "marron": {
-      "label": "Marrón",
+      "label": "Marrón", "label_en": "Brown",
       "hex": "#8a5428"
     }
   },

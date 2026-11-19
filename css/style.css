@@ -520,3 +520,29 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
 .invite label { display: block; margin-bottom: 4px; font-size: 14px; }
 .invite > div { display: flex; gap: 8px; }
 .invite input { flex: 1; min-width: 0; font: 16px 'Nunito', sans-serif; padding: 4px 8px; border: 2px solid #2b1d05; border-radius: 8px; }
+
+/* Selector de idioma: banderas en la esquina superior derecha, siempre por encima de todo */
+#lang {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: calc(var(--z-tooltip) + 1);
+  display: flex;
+  gap: 6px;
+}
+.lang-btn {
+  width: 36px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid #2b1d05;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #fff;
+  opacity: .55;
+  filter: grayscale(.4);
+  transition: opacity .15s, transform .15s;
+}
+.lang-btn img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lang-btn:hover { opacity: .9; transform: translateY(-1px); }
+.lang-btn.on { opacity: 1; filter: none; box-shadow: 0 0 0 2px #ffd54a; }

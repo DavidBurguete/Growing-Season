@@ -5,6 +5,7 @@
 // (y como repetidor TURN si la conexión directa no es posible).
 
 import { Game, shuffle } from './game.js';
+import { t } from './i18n.js';
 
 const PREFIX = 'growing-season-';
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin 0/O ni 1/I para que el código se dicte bien
@@ -13,18 +14,13 @@ export const randomCode = () => Array.from({ length: 5 }, () => LETTERS[Math.flo
 export const normalizeCode = (s) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 function peerLib() {
-  if (!window.Peer) throw new Error('No se pudo cargar PeerJS (¿sin conexión a internet?)');
+  if (!window.Peer) throw new Error(t('net.err.peerjs'));
   return window.Peer;
 }
 
-const ERRORS = {
-  'peer-unavailable': 'No existe ninguna sala con ese código (o el anfitrión la ha cerrado).',
-  'unavailable-id': 'Ese código de sala ya está en uso.',
-  network: 'No se pudo contactar con el servidor de conexión. Revisa tu conexión a internet.',
-  'server-error': 'El servidor de conexión no responde. Inténtalo de nuevo en un rato.',
-  'browser-incompatible': 'Este navegador no permite conexiones WebRTC.',
-};
-export const errorText = (err) => ERRORS[err?.type] ?? err?.message ?? String(err);
+// Errores de PeerJS conocidos (textos en i18n.js, claves net.err.<tipo>)
+const ERRORS = ['peer-unavailable', 'unavailable-id', 'network', 'server-error', 'browser-incompatible'];
+export const errorText = (err) => (ERRORS.includes(err?.type) ? t(`net.err.${err.type}`) : err?.message ?? String(err));
 
 // Anfitrión: abre la sala con el código dado y avisa de cada conexión/mensaje/desconexión
 export function openRoom(code, { onOpen, onConnect, onMessage, onClose, onError }) {

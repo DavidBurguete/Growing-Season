@@ -1,7 +1,9 @@
 // Pinta el estado de la partida en el DOM. Cada interacción vuelve a pintar todo
 // (el DOM es pequeño); los clics se recogen por delegación con data-act.
 
-import { circlesOf, fmtFish, forcesExtras } from './game.js';
+import { circlesOf, forcesExtras } from './game.js';
+import { CPU_LEVELS } from './cpu.js';
+import { t, loc, cardName, fmtNum, logText, LANGS, getLang } from './i18n.js';
 
 // Las rutas de los datos apuntan a los originales (assets/img/*.png);
 // en pantalla se usan las copias ligeras generadas por scripts/optimize-images.sh.
@@ -42,7 +44,7 @@ const countBadge = (n) => `<span class="count-badge">${n}</span>`;
 const arrow = (dir = '') => `<img class="arrow ${dir}" src="${asset(IMG.arrow)}" alt="">`;
 // En modo pesca, algunas mejoras tienen otra descripción
 let fishingTips = false;
-const farmTip = (def) => def && `<b>${esc(def.name)}</b><br>${esc((fishingTips && def.descriptionFishing) || def.description || '')}`;
+const farmTip = (def) => def && `<b>${esc(cardName(def))}</b><br>${esc((fishingTips && loc(def, 'descriptionFishing')) || loc(def, 'description'))}`;
 
 // me: asiento de este ordenador en una partida online (null en partida local)
 export function renderAll(game, { me = null } = {}) {
@@ -74,7 +76,7 @@ function renderMarket(game, fresh) {
   const seedDeck = card({
     img: IMG.seedBack, act: assorted ? 'assorted' : '', cls: assorted ? 'hl' : '',
     badge: countBadge(m.seedDeck.length),
-    tip: assorted ? '<b>Semillas varias</b><br>Compra por 1 moneda la carta de arriba' : '',
+    tip: assorted ? t('tip.assorted') : '',
   });
   const reveal = m.assortedReveal
     ? `<div class="assorted-reveal">${card({ img: m.assortedReveal.image, deal: dealt('assorted', 0, 0), back: IMG.seedBack })}</div>`
@@ -95,13 +97,13 @@ function renderMarket(game, fresh) {
   // Durante una salida de pesca, el valor que queda se ve sobre el mazo hasta que termina
   const trip = fishing ? game.fishing : null;
   const fishBadge = trip
-    ? `<span class="uses-badge fish-left">🎣 queda ${fmtFish(trip.power)}</span>`
-    : canGo && fishing ? `<span class="uses-badge">🎣 ${fmtFish(power)}</span>` : '';
+    ? `<span class="uses-badge fish-left">🎣 ${t('badge.fishLeft', { power: trip.power })}</span>`
+    : canGo && fishing ? `<span class="uses-badge">🎣 ${fmtNum(power)}</span>` : '';
   const mineDeck = card({
     img: back, act: canGo ? (fishing ? 'fish' : 'mine') : '', cls: canGo ? 'hl' : '',
     badge: countBadge(m.mineDeck.length),
     extra: fishBadge,
-    tip: fishing ? `<b>Pesca</b><br>${trip ? `Valor de pesca restante: ${fmtFish(trip.power)}` : canGo ? `Pescar con valor ${fmtFish(power)}` : 'Selecciona las cartas sin usar con las que quieras pescar'}` : '',
+    tip: fishing ? `<b>${t('tip.fishing')}</b><br>${trip ? t('tip.fishLeft', { power: trip.power }) : canGo ? t('tip.fishWith', { power }) : t('tip.fishSelect')}` : '',
   });
   // Mientras la carta nueva se anima, la anterior sigue visible debajo
   const mineDeal = dealt('mine', 0, FROM_DECK_LEFT(0));
@@ -118,10 +120,10 @@ function renderMarket(game, fresh) {
   const toolDeck = card({ img: IMG.toolBack, badge: countBadge(m.toolDeck.length) });
 
   document.getElementById('market').innerHTML = `
-    <div class="market-group"><span class="label">Semillas</span><div class="deck-col">${seedDeck}${reveal}</div>${arrow()}${seeds}</div>
-    <div class="market-group"><span class="label">Mejoras de granja</span>${farm}${arrow('left')}${farmDeck}</div>
-    <div class="market-group"><span class="label">${fishing ? 'Pesca' : 'Mina'}</span>${mineDeck}${arrow()}${mineRevealed}</div>
-    <div class="market-group"><span class="label">Herrería</span>${toolDeck}${arrow()}${tools}</div>`;
+    <div class="market-group"><span class="label">${t('market.seeds')}</span><div class="deck-col">${seedDeck}${reveal}</div>${arrow()}${seeds}</div>
+    <div class="market-group"><span class="label">${t('market.farm')}</span>${farm}${arrow('left')}${farmDeck}</div>
+    <div class="market-group"><span class="label">${t(fishing ? 'market.fishing' : 'market.mine')}</span>${mineDeck}${arrow()}${mineRevealed}</div>
+    <div class="market-group"><span class="label">${t('market.smith')}</span>${toolDeck}${arrow()}${tools}</div>`;
 }
 
 // ---------- jugador ----------
@@ -141,7 +143,7 @@ function cropCard(game, crop, plotIndex, active) {
   const c = crop.water > 0 ? crop.def.circles?.[crop.water - 1] : null;
   return card({
     img: crop.def.image, cls: `crop ${action ? 'hl' : ''}`, act: action ? 'crop' : '', i: plotIndex,
-    extra: tokenOn(c) + counter(ready ? '¡Lista!' : `${crop.water}/${max}`, ready),
+    extra: tokenOn(c) + counter(ready ? t('crop.ready') : `${crop.water}/${max}`, ready),
   });
 }
 
@@ -175,8 +177,8 @@ function upgradeCell(game, p, u, active) {
   const upgradeCard = card({ img: u.def.image, act, i: u.uid, cls: hl ? 'hl' : '', extra, tip: farmTip(u.def) });
   // Encurtidora / semilladora: el cultivo guardado, boca abajo, encima como en una parcela
   if (!u.stored) return upgradeCard;
-  const when = u.def.type === 'seedmaker' && u.armed ? '<br>se replanta al empezar el turno o en la fase de compra' : '';
-  return `<div class="plot">${upgradeCard}${card({ img: IMG.seedBack, cls: 'crop', tip: `<b>${esc(u.stored.def.name)}</b><br>guardado en ${esc(u.def.name.toLowerCase())}${when}` })}</div>`;
+  const when = u.def.type === 'seedmaker' && u.armed ? `<br>${t('stored.when')}` : '';
+  return `<div class="plot">${upgradeCard}${card({ img: IMG.seedBack, cls: 'crop', tip: `<b>${esc(cardName(u.stored.def))}</b><br>${esc(t('stored.in', { upgrade: cardName(u.def).toLowerCase() }))}${when}` })}</div>`;
 }
 
 function renderPlayer(game, p, index, me) {
@@ -187,19 +189,21 @@ function renderPlayer(game, p, index, me) {
 
   let button = '';
   // En partidas online, los botones solo aparecen en el ordenador del jugador al que le toca
-  if (active && !game.prompts.length && (me === null || me === index)) {
-    if (game.phase === 'action') button = `<button class="btn" data-act="endActions">Terminar acciones</button>`;
-    if (game.phase === 'buy') button = `<button class="btn" data-act="pass">Pasar turno</button>`;
+  if (active && !game.prompts.length && !p.cpu && (me === null || me === index)) {
+    if (game.phase === 'action') button = `<button class="btn" data-act="endActions">${t('btn.endActions')}</button>`;
+    if (game.phase === 'buy') button = `<button class="btn" data-act="pass">${t('btn.pass')}</button>`;
   }
 
-  // Rendirse: en local, el jugador al que le toca; online, cada uno desde su ordenador
-  const canSurrender = game.phase !== 'gameOver' && (me === null ? active : me === index);
+  // Rendirse: en local, el jugador al que le toca (contra la CPU, el humano en cualquier momento);
+  // online, cada uno desde su ordenador
+  const vsCpu = game.players.some((o) => o.cpu);
+  const canSurrender = game.phase !== 'gameOver' && !p.cpu && (me === null ? active || vsCpu : me === index);
   const surrender = canSurrender
-    ? `<button class="btn small surrender" data-act="surrender" data-i="${index}" title="Rendirse">🏳</button>` : '';
+    ? `<button class="btn small surrender" data-act="surrender" data-i="${index}" title="${t('btn.surrender')}">🏳</button>` : '';
 
   const banner = `
     <div class="banner" style="--banner:${color}">
-      <span class="name">${esc(p.name)}${me === index ? ' <small>(tú)</small>' : ''}</span>
+      <span class="name">${esc(p.name)}${me === index ? ` <small>(${t('player.you')})</small>` : ''}${p.cpu ? ` <small>(${t('player.cpu', { level: t(`cpu.${p.cpu}`) })})</small>` : ''}</span>
       <span class="coins">
         <span class="coin-stack"><img src="${asset(IMG.coin1)}"><img src="${asset(IMG.coin5)}"><img src="${asset(IMG.coin10)}"></span>
         x ${p.coins}
@@ -216,7 +220,7 @@ function renderPlayer(game, p, index, me) {
     const left = [];
     if (c.used && c.def.water) left.push(`💧${c.waterLeft}`);
     if (c.used && c.def.sickle) left.push(`🌾${c.sickleLeft}`);
-    if (!c.used && selected && game.options?.mode === 'fishing') left.push(`🐟${fmtFish(c.def.fish ?? 0)}`);
+    if (!c.used && selected && game.options?.mode === 'fishing') left.push(`🐟${fmtNum(game.fishPower([c], p))}`);
     slots.push(card({
       img: c.image, act: active && game.phase === 'action' ? 'select' : '', i: c.uid,
       cls: `clickable ${selected ? 'selected' : ''} ${c.used ? 'used' : ''}`,
@@ -233,7 +237,7 @@ function renderPlayer(game, p, index, me) {
   const discard = `<div class="discard">${card({
     img: top?.image, act: canDiscard ? 'discard' : '', cls: canDiscard ? 'hl' : '',
     badge: p.discard.length ? countBadge(p.discard.length) : '',
-    extra: pending ? `<span class="uses-badge">sustituciones: ${pending}</span>` : '',
+    extra: pending ? `<span class="uses-badge">${t('badge.replacements', { n: pending })}</span>` : '',
   })}${pile}</div>`;
 
   // Tablero
@@ -271,7 +275,7 @@ function renderLog(game) {
   const hex = (who) => game.cfg.colors[game.players[who]?.color]?.hex;
   const lines = game.log.slice().reverse().map((l) => {
     const c = l.who !== null && l.who !== undefined ? hex(l.who) : null;
-    return `<div class="${l.kind}" ${c ? `style="color:${c}"` : ''}>${esc(l.msg)}</div>`;
+    return `<div class="${l.kind}" ${c ? `style="color:${c}"` : ''}>${esc(logText(l))}</div>`;
   }).join('');
   const el = document.getElementById('log');
   el.innerHTML = lines;
@@ -298,43 +302,51 @@ export function menuHtml() {
   return `
     <h1>Growing Season</h1>
     <div class="menu-buttons">
-      <button class="btn" data-act="menuLocal">Partida local</button>
-      <button class="btn" data-act="menuHost">Crear partida online</button>
-      <button class="btn" data-act="menuJoin">Unirse a una partida</button>
+      <button class="btn" data-act="menuLocal">${t('menu.local')}</button>
+      <button class="btn" data-act="menuHost">${t('menu.host')}</button>
+      <button class="btn" data-act="menuJoin">${t('menu.join')}</button>
     </div>`;
 }
 
+// Selector de idioma (banderas); siempre visible en la esquina
+export function renderLangPicker() {
+  const el = document.getElementById('lang');
+  if (!el) return;
+  el.setAttribute('aria-label', t('menu.language'));
+  el.innerHTML = Object.entries(LANGS).map(([k, v]) => `<button class="lang-btn ${k === getLang() ? 'on' : ''}" data-lang="${k}" title="${v.label}" aria-label="${v.label}" aria-pressed="${k === getLang()}"><img src="${v.flag}" alt=""></button>`).join('');
+}
+
 const colorOptions = (cfg, sel, taken = []) => Object.entries(cfg.colors)
-  .map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''} ${taken.includes(k) ? 'disabled' : ''}>${v.label}</option>`).join('');
+  .map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''} ${taken.includes(k) ? 'disabled' : ''}>${esc(loc(v, 'label'))}</option>`).join('');
 const errorLine = (msg) => (msg ? `<p class="net-error">${esc(msg)}</p>` : '');
 
 export function hostFormHtml(cfg, d, error = '') {
   return `
-    <h2>Crear partida online</h2>
-    <p>Tu navegador hará de anfitrión: mientras dure la partida, no cierres esta pestaña.</p>
+    <h2>${t('host.title')}</h2>
+    <p>${t('host.text')}</p>
     <div class="setup-player">
-      <input id="net-name" value="${esc(d.name)}" maxlength="16" aria-label="Tu nombre">
-      <select id="net-color" aria-label="Tu color">${colorOptions(cfg, d.color)}</select>
+      <input id="net-name" value="${esc(d.name)}" maxlength="16" aria-label="${t('net.yourName')}">
+      <select id="net-color" aria-label="${t('net.yourColor')}">${colorOptions(cfg, d.color)}</select>
     </div>
     ${errorLine(error)}
-    <button class="btn secondary" data-act="menu">Volver</button>
-    <button class="btn" data-act="createRoom">Crear sala</button>`;
+    <button class="btn secondary" data-act="menu">${t('btn.back')}</button>
+    <button class="btn" data-act="createRoom">${t('host.create')}</button>`;
 }
 
 export function joinFormHtml(d, error = '') {
   return `
-    <h2>Unirse a una partida</h2>
+    <h2>${t('join.title')}</h2>
     <div class="setup-player">
-      <input id="net-code" class="code-input" value="${esc(d.code ?? '')}" maxlength="5" placeholder="CÓDIGO" aria-label="Código de la sala">
-      <input id="net-name" value="${esc(d.name)}" maxlength="16" aria-label="Tu nombre">
+      <input id="net-code" class="code-input" value="${esc(d.code ?? '')}" maxlength="5" placeholder="${t('join.code')}" aria-label="${t('join.codeLabel')}">
+      <input id="net-name" value="${esc(d.name)}" maxlength="16" aria-label="${t('net.yourName')}">
     </div>
     ${errorLine(error)}
-    <button class="btn secondary" data-act="menu">Volver</button>
-    <button class="btn" data-act="joinRoom">Conectar</button>`;
+    <button class="btn secondary" data-act="menu">${t('btn.back')}</button>
+    <button class="btn" data-act="joinRoom">${t('join.connect')}</button>`;
 }
 
 export function connectingHtml(text) {
-  return `<h2>${esc(text)}</h2><p class="net-spinner">●●●</p><button class="btn secondary" data-act="menu">Cancelar</button>`;
+  return `<h2>${esc(text)}</h2><p class="net-spinner">●●●</p><button class="btn secondary" data-act="menu">${t('btn.cancel')}</button>`;
 }
 
 // Sala de espera. lobby = { code, link, players: [{name, color, online}], spectators, me, isHost }
@@ -342,35 +354,35 @@ export function lobbyHtml(cfg, lobby) {
   const rows = lobby.players.map((p, i) => {
     const taken = lobby.players.filter((_, j) => j !== i).map((o) => o.color);
     const color = i === lobby.me
-      ? `<select id="lobby-color" aria-label="Tu color">${colorOptions(cfg, p.color, taken)}</select>`
-      : `<span class="chip" style="background:${cfg.colors[p.color]?.hex}">${cfg.colors[p.color]?.label ?? ''}</span>`;
-    return `<div class="lobby-row"><span class="lobby-name">${esc(p.name)}${i === lobby.me ? ' (tú)' : ''}${i === 0 ? ' · anfitrión' : ''}</span>${color}</div>`;
+      ? `<select id="lobby-color" aria-label="${t('net.yourColor')}">${colorOptions(cfg, p.color, taken)}</select>`
+      : `<span class="chip" style="background:${cfg.colors[p.color]?.hex}">${esc(loc(cfg.colors[p.color], 'label'))}</span>`;
+    return `<div class="lobby-row"><span class="lobby-name">${esc(p.name)}${i === lobby.me ? ` (${t('player.you')})` : ''}${i === 0 ? ` · ${t('lobby.host')}` : ''}</span>${color}</div>`;
   }).join('');
   const full = lobby.players.length >= 2;
-  const spect = lobby.spectators ? `<p>${lobby.spectators} espectador${lobby.spectators === 1 ? '' : 'es'} conectado${lobby.spectators === 1 ? '' : 's'}</p>` : '';
+  const spect = lobby.spectators ? `<p>${t('lobby.spectators', { n: lobby.spectators })}</p>` : '';
   const actions = lobby.isHost
-    ? `<button class="btn secondary" data-act="menu">Cerrar sala</button>
-       <button class="btn" data-act="startOnline" ${full ? '' : 'disabled'}>Empezar partida</button>`
-    : `<p>${lobby.me === null ? 'La partida está completa: la verás como espectador.' : 'Esperando a que el anfitrión empiece la partida…'}</p>
-       <button class="btn secondary" data-act="menu">Salir</button>`;
+    ? `<button class="btn secondary" data-act="menu">${t('lobby.close')}</button>
+       <button class="btn" data-act="startOnline" ${full ? '' : 'disabled'}>${t('btn.start')}</button>`
+    : `<p>${t(lobby.me === null ? 'lobby.full' : 'lobby.waitHost')}</p>
+       <button class="btn secondary" data-act="menu">${t('lobby.leave')}</button>`;
   return `
-    <h2>Sala de espera</h2>
-    <p>Código de la sala</p>
+    <h2>${t('lobby.title')}</h2>
+    <p>${t('lobby.code')}</p>
     <div class="room-code">${esc(lobby.code)}</div>
     ${lobby.isHost ? `
       <div class="invite">
-        <label for="invite-host">Dirección para invitar (IP pública:puerto)</label>
+        <label for="invite-host">${t('lobby.invite')}</label>
         <div><input id="invite-host" value="${esc(lobby.inviteHost)}" placeholder="81.0.0.1:8000" spellcheck="false">
-        <button class="btn small" data-act="copyLink">Copiar enlace</button></div>
+        <button class="btn small" data-act="copyLink">${t('lobby.copy')}</button></div>
       </div>` : ''}
-    <div class="lobby-list">${rows}${full ? '' : '<div class="lobby-row waiting">Esperando a otro jugador…</div>'}</div>
+    <div class="lobby-list">${rows}${full ? '' : `<div class="lobby-row waiting">${t('lobby.waiting')}</div>`}</div>
     ${optionsHtml(cfg, lobby.options, { editable: lobby.isHost })}
     ${spect}
     ${actions}`;
 }
 
 export function messageHtml(title, text) {
-  return `<h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn" data-act="menu">Volver al menú</button>`;
+  return `<h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn" data-act="menu">${t('btn.backToMenu')}</button>`;
 }
 
 // Opciones de partida (ids opt-length / opt-extras / opt-fishing).
@@ -379,95 +391,99 @@ export function optionsHtml(cfg, options, { editable = true } = {}) {
   const locked = forcesExtras(options.length);
   const box = (id, checked, label, lock = false) => `<label class="option"><input type="checkbox" id="${id}" ${checked ? 'checked' : ''} ${editable && !lock ? '' : 'disabled'}> ${label}</label>`;
   const lengths = Object.entries(cfg.boards)
-    .map(([k, b]) => `<option value="${k}" ${k === options.length ? 'selected' : ''}>${esc(b.label)}</option>`).join('');
+    .map(([k, b]) => `<option value="${k}" ${k === options.length ? 'selected' : ''}>${esc(loc(b, 'label'))}</option>`).join('');
   return `<div class="options">
-    <label class="option">Duración de la partida
+    <label class="option">${t('options.length')}
       <select id="opt-length" ${editable ? '' : 'disabled'}>${lengths}</select></label>
-    ${box('opt-extras', options.extras || locked, 'Jugar con las mejoras extra (★) de granja y herrería', locked)}
-    ${box('opt-fishing', options.mode === 'fishing', 'Jugar con pesca en lugar de mina')}
+    ${box('opt-extras', options.extras || locked, t('options.extras'), locked)}
+    ${box('opt-fishing', options.mode === 'fishing', t('options.fishing'))}
   </div>`;
 }
+
+// Quién controla a cada jugador en la partida local: una persona o la CPU de un nivel
+const cpuOptions = (sel) => [['', t('cpu.human')], ...Object.keys(CPU_LEVELS).map((k) => [k, t('player.cpu', { level: t(`cpu.${k}`) })])]
+  .map(([k, v]) => `<option value="${k}" ${k === (sel ?? '') ? 'selected' : ''}>${v}</option>`).join('');
 
 export function setupDialogHtml(cfg, defaults, options) {
   const opts = (sel) => Object.entries(cfg.colors)
     .map(([k, v]) => {
       const taken = k !== sel && defaults.some((d) => d.color === k);
-      return `<option value="${k}" ${k === sel ? 'selected' : ''} ${taken ? 'disabled' : ''}>${v.label}</option>`;
+      return `<option value="${k}" ${k === sel ? 'selected' : ''} ${taken ? 'disabled' : ''}>${esc(loc(v, 'label'))}</option>`;
     }).join('');
   return `
     <h1>Growing Season</h1>
-    <p>Partida de 2 jugadores en el mismo ordenador</p>
+    <p>${t('setup.subtitle')}</p>
     ${defaults.map((d, i) => `
       <div class="setup-player">
-        <input id="name-${i}" value="${esc(d.name)}" maxlength="16" aria-label="Nombre del jugador ${i + 1}">
-        <select id="color-${i}" class="color-select" aria-label="Color del jugador ${i + 1}">${opts(d.color)}</select>
+        <input id="name-${i}" value="${esc(d.name || t('setup.defaultName', { n: i + 1 }))}" maxlength="16" aria-label="${t('setup.nameLabel', { n: i + 1 })}">
+        <select id="color-${i}" class="color-select" aria-label="${t('setup.colorLabel', { n: i + 1 })}">${opts(d.color)}</select>
+        <select id="cpu-${i}" aria-label="${t('setup.cpuLabel', { n: i + 1 })}">${cpuOptions(d.cpu)}</select>
       </div>`).join('')}
     ${optionsHtml(cfg, options)}
-    <button class="btn secondary" data-act="menu">Volver</button>
-    <button class="btn" data-act="start">Empezar partida</button>`;
+    <button class="btn secondary" data-act="menu">${t('btn.back')}</button>
+    <button class="btn" data-act="start">${t('btn.start')}</button>`;
 }
 
 const choice = (img, act, i, caption) => `<div data-act="${act}" data-i="${i}">
   ${card({ img })}<div class="caption">${caption}</div></div>`;
 
 export function replaceDialogHtml(game, pr) {
-  const t = game.data.tools.starters[game.player.color];
+  const imgs = game.data.tools.starters[game.player.color];
   return `
-    <h2>¿Qué carta inicial sustituye ${esc(pr.tool.name)}?</h2>
+    <h2>${esc(t('replace.title', { card: pr.tool }))}</h2>
     <div class="choice-cards">
-      ${pr.options.map((o) => choice(t[o], 'replace', o, `${o === 'watering' ? 'Regadera' : 'Hoz'} (quedan ${game.replaceableCount(game.player, o)})`)).join('')}
+      ${pr.options.map((o) => choice(imgs[o], 'replace', o, t('replace.option', { tool: o, n: game.replaceableCount(game.player, o) }))).join('')}
     </div>`;
 }
 
 export function harvestStoreDialogHtml(game, pr) {
   const ups = pr.options.map((id) => game.player.upgrades.find((u) => u.uid === id));
   return `
-    <h2>¿Dónde guardas ${esc(pr.crop.def.name)}?</h2>
+    <h2>${esc(t('store.title', { crop: pr.crop.def }))}</h2>
     <div class="store-source">${card({ img: pr.crop.def.image })}${arrow('down')}</div>
     <div class="choice-cards">
-      ${ups.map((u) => choice(u.def.image, 'store', u.uid, esc(u.def.name))).join('')}
+      ${ups.map((u) => choice(u.def.image, 'store', u.uid, esc(cardName(u.def)))).join('')}
     </div>
-    <button class="btn secondary" data-act="storeNone">No guardar</button>`;
+    <button class="btn secondary" data-act="storeNone">${t('store.none')}</button>`;
 }
 
 export function warehouseDialogHtml(game) {
   return `
-    <h2>Almacén: ¿qué semilla quieres plantar?</h2>
+    <h2>${t('warehouse.title')}</h2>
     <div class="choice-cards">
-      ${game.player.warehouse.map((d, i) => choice(d.image, 'stored', i, esc(d.name))).join('')}
+      ${game.player.warehouse.map((d, i) => choice(d.image, 'stored', i, esc(cardName(d)))).join('')}
     </div>
-    <button class="btn secondary" data-act="cancel">No plantar</button>`;
+    <button class="btn secondary" data-act="cancel">${t('warehouse.none')}</button>`;
 }
 
 export function fishDialogHtml(game) {
   const f = game.fishing;
   const coins = f.caught.reduce((s, c) => s + c.coins, 0);
   return `
-    <h2>¡Has pescado!</h2>
+    <h2>${t('fish.title')}</h2>
     <div class="choice-cards fish-caught">${f.caught.map((c) => card({ img: c.image })).join('')}</div>
-    <p>Llevas <b>${coins}</b> moneda${coins === 1 ? '' : 's'} y te queda un valor de pesca de <b>${fmtFish(f.power)}</b>.<br>
-    Si sigues y el siguiente pez supera tu valor, se escapará junto con el último que has pescado.</p>
-    <button class="btn secondary" data-act="fishStop">Parar y cobrar</button>
-    <button class="btn" data-act="fishMore">Seguir pescando</button>`;
+    <p>${t('fish.text', { coins, power: f.power })}</p>
+    <button class="btn secondary" data-act="fishStop">${t('fish.stop')}</button>
+    <button class="btn" data-act="fishMore">${t('fish.more')}</button>`;
 }
 
 export function surrenderDialogHtml(game, index) {
   return `
-    <h2>¿Seguro que ${esc(game.players[index].name)} se rinde?</h2>
-    <p>La partida terminará y ganará el otro jugador.</p>
-    <button class="btn secondary" data-act="surrenderNo">Cancelar</button>
-    <button class="btn danger" data-act="surrenderYes" data-i="${index}">Rendirse</button>`;
+    <h2>${t('surrender.title', { name: esc(game.players[index].name) })}</h2>
+    <p>${t('surrender.text')}</p>
+    <button class="btn secondary" data-act="surrenderNo">${t('btn.cancel')}</button>
+    <button class="btn danger" data-act="surrenderYes" data-i="${index}">${t('btn.surrender')}</button>`;
 }
 
 export function gameOverHtml(game, { canRestart = true } = {}) {
-  const rows = game.players.map((p) => `<p><b>${esc(p.name)}</b>: ${p.board}/${game.boardSpaces.length} casillas, ${p.coins} monedas, ${p.plots.filter((pl) => pl.crop).length} cultivos</p>`).join('');
+  const rows = game.players.map((p) => `<p>${t('over.row', { name: esc(p.name), board: p.board, spaces: game.boardSpaces.length, coins: p.coins, crops: p.plots.filter((pl) => pl.crop).length })}</p>`).join('');
   const title = game.winners.length === 1
-    ? `¡Gana ${esc(game.winners[0].name)}!`
-    : `¡Victoria compartida!`;
+    ? t('over.wins', { name: esc(game.winners[0].name) })
+    : t('over.shared');
   const button = canRestart
-    ? '<button class="btn" data-act="restart">Nueva partida</button>'
-    : '<p>El anfitrión puede empezar una nueva partida.</p>';
+    ? `<button class="btn" data-act="restart">${t('over.restart')}</button>`
+    : `<p>${t('over.hostRestarts')}</p>`;
   const gaveUp = game.surrendered !== null && game.surrendered !== undefined
-    ? `<p>${esc(game.players[game.surrendered].name)} se ha rendido.</p>` : '';
+    ? `<p>${t('over.gaveUp', { name: esc(game.players[game.surrendered].name) })}</p>` : '';
   return `<h1>${title}</h1>${gaveUp}${rows}${button}`;
 }

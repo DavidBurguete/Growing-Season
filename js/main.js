@@ -1,8 +1,10 @@
 import { Game, DEFAULT_OPTIONS, forcesExtras, shuffle } from './game.js';
+import { cpuStep } from './cpu.js';
+import { t, setLang, getLang } from './i18n.js';
 import {
   renderAll, showDialog, hideDialog, setupDialogHtml, replaceDialogHtml,
   harvestStoreDialogHtml, warehouseDialogHtml, gameOverHtml,
-  fishDialogHtml, surrenderDialogHtml,
+  fishDialogHtml, surrenderDialogHtml, renderLangPicker,
   menuHtml, hostFormHtml, joinFormHtml, connectingHtml, lobbyHtml, messageHtml,
 } from './render.js';
 import {
@@ -22,8 +24,8 @@ const W = 1920, H = 923;
 let data;
 let game;
 let lastSetup = [
-  { name: 'Jugador 1', color: 'rojo' },
-  { name: 'Jugador 2', color: 'verde' },
+  { name: '', color: 'rojo', cpu: null }, // nombre vacío = el de por defecto en el idioma elegido
+  { name: '', color: 'verde', cpu: null },
 ];
 let lastOptions = { ...DEFAULT_OPTIONS };
 let confirmSurrender = null; // jugador que ha pulsado "rendirse" y aún no lo ha confirmado
@@ -65,7 +67,7 @@ const net = {
 };
 const online = () => net.mode !== 'local';
 function myName() {
-  try { return localStorage.getItem('gs-name') || 'Jugador'; } catch { return 'Jugador'; }
+  try { return localStorage.getItem('gs-name') || t('net.defaultName'); } catch { return t('net.defaultName'); }
 }
 function rememberName(n) {
   try { localStorage.setItem('gs-name', n); } catch { /* sin almacenamiento */ }
@@ -101,10 +103,61 @@ function fit() {
 
 // ---------- ciclo de pintado ----------
 
-// ¿Puede este ordenador actuar ahora mismo?
-const myTurn = () => !online() || (game && game.current === net.me);
+// ¿Puede este ordenador actuar ahora mismo? (en el turno de la CPU, nadie)
+const myTurn = () => (!online() || (game && game.current === net.me)) && !game?.player?.cpu;
+
+// ---------- CPU ----------
+// En el turno de una CPU se hace una acción cada CPU_DELAY ms, para que se vea lo que hace.
+// Se para mientras está abierta la confirmación de rendirse.
+const CPU_DELAY = 750;
+let cpuTimer = null;
+function scheduleCpu() {
+  if (cpuTimer || !game || online() || game.phase === 'gameOver' || !game.player.cpu || confirmSurrender !== null) return;
+  const g = game;
+  cpuTimer = setTimeout(() => {
+    cpuTimer = null;
+    if (game !== g || confirmSurrender !== null) return;
+    hideTip();
+    cpuStep(game);
+    update();
+  }, CPU_DELAY);
+}
+function stopCpu() {
+  clearTimeout(cpuTimer);
+  cpuTimer = null;
+}
+
+// Pantallas fuera de la partida (menú, formularios, sala…): se guarda cómo pintarlas
+// para poder repintarlas al cambiar de idioma.
+let screen = null;
+function showScreen(fn) {
+  screen = fn;
+  showDialog(fn());
+}
+
+// Cambio de idioma: se repinta todo conservando lo que se haya escrito en el diálogo abierto
+function switchLang(l) {
+  if (l === getLang()) return;
+  const form = readSetupForm();
+  if (form) { lastSetup = form; lastOptions = readOptions(lastOptions); }
+  const fields = [...document.querySelectorAll('#overlay input[id], #overlay select[id]')]
+    .filter((el) => !/^name-\d$/.test(el.id))
+    .map((el) => [el.id, el.type === 'checkbox' ? el.checked : el.value, el.disabled]);
+  setLang(l);
+  renderLangPicker();
+  if (game) { update(); return; }
+  if (!screen) return;
+  showDialog(screen());
+  for (const [id, v, disabled] of fields) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (el.type === 'checkbox') el.checked = v; else el.value = v;
+    el.disabled = disabled;
+  }
+}
 
 function update() {
+  screen = null;
   if (net.mode === 'host') broadcastState(); // antes de pintar: renderAll consume game.fresh
   renderAll(game, { me: online() ? net.me : null });
   document.body.classList.toggle('watching', game.phase !== 'gameOver' && !myTurn());
@@ -117,9 +170,11 @@ function update() {
   else if (pr?.type === 'harvestStore') showDialog(harvestStoreDialogHtml(game, pr));
   else if (pr?.type === 'chooseStored') showDialog(warehouseDialogHtml(game));
   else hideDialog();
+  scheduleCpu();
 }
 
 function clearBoard() {
+  stopCpu();
   game = null;
   document.body.classList.remove('watching');
   for (const id of ['market', 'player-0', 'player-1', 'log']) document.getElementById(id).innerHTML = '';
@@ -128,26 +183,39 @@ function clearBoard() {
 // ---------- partida local ----------
 
 function showSetup() {
-  showDialog(setupDialogHtml(data.config, lastSetup, lastOptions));
+  showScreen(() => setupDialogHtml(data.config, lastSetup, lastOptions));
+}
+
+// Lee el formulario de partida local (si está abierto). Un nombre igual al de por defecto
+// se guarda vacío, para que cambie con el idioma.
+function readSetupForm() {
+  if (!document.getElementById('name-0')) return null;
+  return [0, 1].map((i) => {
+    const name = document.getElementById(`name-${i}`).value.trim();
+    return {
+      name: name === t('setup.defaultName', { n: i + 1 }) ? '' : name,
+      color: document.getElementById(`color-${i}`).value,
+      cpu: document.getElementById(`cpu-${i}`)?.value || null,
+    };
+  });
 }
 
 // Primera línea del registro (antes de "Turno de …"): el orden sorteado
 function logOrder(g, setup) {
-  g.log.unshift({ msg: `Orden de juego (por sorteo): ${setup.map((p) => p.name).join(', ')}`, kind: 'turn', turn: 0, who: null });
+  g.log.unshift({ key: 'order', params: { names: setup.map((p) => p.name) }, kind: 'turn', turn: 0, who: null });
 }
 
 function startLocalGame() {
-  const setup = [0, 1].map((i) => ({
-    name: document.getElementById(`name-${i}`).value.trim() || `Jugador ${i + 1}`,
-    color: document.getElementById(`color-${i}`).value,
-  }));
-  if (setup[0].color === setup[1].color) {
-    alert('Cada jugador debe tener un color distinto.');
+  const form = readSetupForm();
+  if (form[0].color === form[1].color) {
+    alert(t('setup.sameColor'));
     return;
   }
-  lastSetup = setup; // el formulario conserva el orden escrito
+  lastSetup = form; // el formulario conserva el orden escrito
+  const setup = form.map((p, i) => ({ ...p, name: p.name || t('setup.defaultName', { n: i + 1 }) }));
   lastOptions = readOptions(lastOptions);
   confirmSurrender = null;
+  stopCpu();
   // Orden aleatorio: cada jugador conserva su nombre y color, solo cambia quién empieza
   const order = shuffle([...setup]);
   game = new Game(data, order, lastOptions);
@@ -166,13 +234,18 @@ function leaveOnline() {
 function showMenu() {
   leaveOnline();
   clearBoard();
-  showDialog(menuHtml());
+  showScreen(() => menuHtml());
 }
 
 // ---------- anfitrión ----------
 
+// Los errores se pasan como función para que se traduzcan de nuevo si cambia el idioma
+const errorMsg = (error) => (typeof error === 'function' ? error() : error);
+
 function showHostForm(error = '') {
-  showDialog(hostFormHtml(data.config, { name: myName(), color: 'rojo' }, error));
+  const name = document.getElementById('net-name')?.value.trim() || myName();
+  const color = document.getElementById('net-color')?.value || 'rojo';
+  showScreen(() => hostFormHtml(data.config, { name, color }, errorMsg(error)));
 }
 
 function createRoom(code = randomCode(), retry = null) {
@@ -184,7 +257,7 @@ function createRoom(code = randomCode(), retry = null) {
   net.code = code;
   net.me = 0;
   net.players = [{ name, color, conn: null }];
-  showDialog(connectingHtml('Creando la sala…'));
+  showScreen(() => connectingHtml(t('host.creating')));
   net.peer = openRoom(code, {
     onOpen: () => showLobby(),
     onConnect: () => {}, // se espera al mensaje "hello" con el nombre
@@ -194,7 +267,7 @@ function createRoom(code = randomCode(), retry = null) {
       if (net.mode !== 'host') return;
       if (err.type === 'unavailable-id') { createRoom(randomCode(), { name, color }); return; }
       if (err.type === 'peer-unavailable') return; // un invitado que ya no está
-      if (!game && net.players.length === 1) { leaveOnline(); showHostForm(errorText(err)); }
+      if (!game && net.players.length === 1) { leaveOnline(); showHostForm(() => errorText(err)); }
     },
   });
 }
@@ -210,11 +283,11 @@ function inviteHost() {
 function copyInviteLink() {
   const input = document.getElementById('invite-host');
   const host = input.value.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  if (!host) { input.focus(); input.placeholder = 'Escribe aquí tu IP pública y el puerto'; return; }
+  if (!host) { input.focus(); input.placeholder = t('lobby.invitePlaceholder'); return; }
   try { localStorage.setItem('gs-invite-host', host); } catch { /* sin almacenamiento */ }
   const link = `${location.protocol}//${host}${location.pathname}?sala=${net.code}`;
   const btn = document.querySelector('[data-act=copyLink]');
-  const done = () => { btn.textContent = '¡Copiado!'; };
+  const done = () => { btn.textContent = t('lobby.copied'); };
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(link).then(done);
   else { input.value = link; input.select(); document.execCommand('copy'); done(); }
 }
@@ -239,20 +312,20 @@ function lobbyState(forSeat) {
 
 function showLobby() {
   if (net.mode !== 'host') return;
-  showDialog(lobbyHtml(data.config, lobbyState(0)));
+  showScreen(() => lobbyHtml(data.config, lobbyState(0)));
   net.players.forEach((p, i) => send(p.conn, { t: 'lobby', lobby: lobbyState(i) }));
   net.spectators.forEach((c) => send(c, { t: 'lobby', lobby: lobbyState(null) }));
 }
 
 function hostMessage(conn, msg) {
   if (msg.t === 'hello') {
-    const name = String(msg.name ?? '').trim().slice(0, 16) || 'Invitado';
+    const name = String(msg.name ?? '').trim().slice(0, 16) || t('net.guestName');
     if (game) {
       // Partida empezada: si vuelve un jugador desconectado (mismo nombre), recupera su sitio
       const seat = net.players.findIndex((p, i) => i > 0 && !p.conn && p.name === name);
       if (seat > 0) {
         net.players[seat].conn = conn;
-        game.say(`${name} se ha vuelto a conectar`);
+        game.say('reconnected', { name });
       } else {
         net.spectators.push(conn);
       }
@@ -294,7 +367,7 @@ function hostConnClosed(conn) {
     showLobby();
   } else {
     net.players[seat].conn = null;
-    game.say(`${net.players[seat].name} se ha desconectado (puede volver con el mismo código y nombre)`);
+    game.say('disconnected', { name: net.players[seat].name });
     update();
   }
 }
@@ -322,18 +395,19 @@ function broadcastState() {
 // ---------- invitado ----------
 
 function showJoinForm(error = '', code = '') {
-  showDialog(joinFormHtml({ code, name: myName() }, error));
+  const name = document.getElementById('net-name')?.value.trim() || myName();
+  showScreen(() => joinFormHtml({ code, name }, errorMsg(error)));
 }
 
 function joinGame() {
   const code = normalizeCode(document.getElementById('net-code').value);
   const name = document.getElementById('net-name').value.trim() || myName();
-  if (code.length !== 5) { showJoinForm('El código de la sala tiene 5 caracteres.', code); return; }
+  if (code.length !== 5) { showJoinForm(() => t('join.badCode'), code); return; }
   rememberName(name);
   leaveOnline();
   net.mode = 'guest';
   net.code = code;
-  showDialog(connectingHtml('Conectando con la sala…'));
+  showScreen(() => connectingHtml(t('join.connecting')));
   let connected = false;
   net.peer = joinRoom(code, {
     onOpen: (conn) => {
@@ -346,12 +420,12 @@ function joinGame() {
       if (net.mode !== 'guest') return;
       leaveOnline();
       clearBoard();
-      showDialog(messageHtml('Conexión perdida', 'Se ha perdido la conexión con el anfitrión. Puedes volver a unirte con el mismo código y nombre.'));
+      showScreen(() => messageHtml(t('lost.title'), t('lost.text')));
     },
     onError: (err) => {
       if (net.mode !== 'guest' || connected) return;
       leaveOnline();
-      showJoinForm(errorText(err), code);
+      showJoinForm(() => errorText(err), code);
     },
   });
 }
@@ -360,7 +434,7 @@ function guestMessage(msg) {
   if (msg.t === 'lobby') {
     clearBoard();
     net.me = msg.lobby.me;
-    showDialog(lobbyHtml(data.config, msg.lobby));
+    showScreen(() => lobbyHtml(data.config, msg.lobby));
   }
   if (msg.t === 'state') {
     net.me = msg.me;
@@ -433,6 +507,8 @@ const MENU_ACTIONS = {
 };
 
 document.addEventListener('click', (e) => {
+  const flag = e.target.closest('[data-lang]');
+  if (flag) { switchLang(flag.dataset.lang); return; }
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled) return;
   const act = el.dataset.act;
@@ -499,14 +575,16 @@ window.addEventListener('beforeunload', (e) => {
   if (net.mode === 'host' && game && game.phase !== 'gameOver') e.preventDefault();
 });
 fit();
+setLang(getLang());
+renderLangPicker();
 
 try {
   data = await loadData();
   const sala = normalizeCode(new URLSearchParams(location.search).get('sala'));
   if (sala) showJoinForm('', sala);
-  else showDialog(menuHtml());
+  else showScreen(() => menuHtml());
 } catch (err) {
-  showDialog(`<h2>No se pudieron cargar los datos</h2>
+  showScreen(() => `<h2>${t('load.title')}</h2>
     <p>${err.message}</p>
-    <p>Abre el juego desde un servidor local, por ejemplo:<br><code>python3 scripts/serve.py</code></p>`);
+    <p>${t('load.hint')}<br><code>python3 scripts/serve.py</code></p>`);
 }
