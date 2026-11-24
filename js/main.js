@@ -3,7 +3,7 @@ import { cpuStep } from './cpu.js';
 import { t, setLang, getLang } from './i18n.js';
 import {
   renderAll, showDialog, hideDialog, setupDialogHtml, replaceDialogHtml,
-  harvestStoreDialogHtml, warehouseDialogHtml, gameOverHtml,
+  harvestStoreDialogHtml, warehouseDialogHtml, gameOverHtml, localChoiceHtml,
   fishDialogHtml, surrenderDialogHtml, renderLangPicker,
   menuHtml, hostFormHtml, joinFormHtml, connectingHtml, lobbyHtml, messageHtml,
 } from './render.js';
@@ -24,9 +24,13 @@ const W = 1920, H = 923;
 let data;
 let game;
 let lastSetup = [
-  { name: '', color: 'rojo', cpu: null }, // nombre vacío = el de por defecto en el idioma elegido
-  { name: '', color: 'verde', cpu: null },
+  { name: '', color: 'rojo' }, // nombre vacío = el de por defecto en el idioma elegido
+  { name: '', color: 'verde' },
 ];
+// Partida local: contra otra persona ('human') o contra la CPU ('cpu', con su nivel).
+// El primer jugador (el "anfitrión") siempre es una persona.
+let localMode = 'human';
+let lastCpuLevel = 'medium';
 let lastOptions = { ...DEFAULT_OPTIONS };
 let confirmSurrender = null; // jugador que ha pulsado "rendirse" y aún no lo ha confirmado
 
@@ -66,6 +70,15 @@ const net = {
   options: { ...DEFAULT_OPTIONS }, // opciones elegidas por el anfitrión en la sala
 };
 const online = () => net.mode !== 'local';
+
+// Latido: PeerJS no siempre avisa cuando el otro navegador se cierra de golpe. Cada ordenador
+// manda un "ping" cada HEARTBEAT ms; si no llega nada en TIMEOUT ms, se da la conexión por perdida.
+const HEARTBEAT = 2000, TIMEOUT = 10000;
+let heartbeat = null;
+function startHeartbeat(fn) {
+  clearInterval(heartbeat);
+  heartbeat = setInterval(fn, HEARTBEAT);
+}
 function myName() {
   try { return localStorage.getItem('gs-name') || t('net.defaultName'); } catch { return t('net.defaultName'); }
 }
@@ -111,8 +124,9 @@ const myTurn = () => (!online() || (game && game.current === net.me)) && !game?.
 // Se para mientras está abierta la confirmación de rendirse.
 const CPU_DELAY = 750;
 let cpuTimer = null;
+// En una partida online la CPU solo aparece si se desconecta un invitado; la mueve el anfitrión.
 function scheduleCpu() {
-  if (cpuTimer || !game || online() || game.phase === 'gameOver' || !game.player.cpu || confirmSurrender !== null) return;
+  if (cpuTimer || !game || net.mode === 'guest' || game.phase === 'gameOver' || !game.player.cpu || confirmSurrender !== null) return;
   const g = game;
   cpuTimer = setTimeout(() => {
     cpuTimer = null;
@@ -182,23 +196,32 @@ function clearBoard() {
 
 // ---------- partida local ----------
 
-function showSetup() {
-  showScreen(() => setupDialogHtml(data.config, lastSetup, lastOptions));
+function showLocalChoice() {
+  showScreen(() => localChoiceHtml());
+}
+
+function showSetup(mode = localMode) {
+  localMode = mode;
+  showScreen(() => setupDialogHtml(data.config, lastSetup, lastOptions, { cpu: localMode === 'cpu' ? lastCpuLevel : null }));
 }
 
 // Lee el formulario de partida local (si está abierto). Un nombre igual al de por defecto
-// se guarda vacío, para que cambie con el idioma.
+// se guarda vacío, para que cambie con el idioma. Contra la CPU, el segundo jugador no tiene nombre.
 function readSetupForm() {
   if (!document.getElementById('name-0')) return null;
+  const level = document.getElementById('cpu-1')?.value;
+  if (level) lastCpuLevel = level;
   return [0, 1].map((i) => {
-    const name = document.getElementById(`name-${i}`).value.trim();
+    const name = document.getElementById(`name-${i}`)?.value.trim() ?? lastSetup[i].name;
     return {
       name: name === t('setup.defaultName', { n: i + 1 }) ? '' : name,
       color: document.getElementById(`color-${i}`).value,
-      cpu: document.getElementById(`cpu-${i}`)?.value || null,
     };
   });
 }
+
+// Nombre de un jugador CPU: se traduce al pintar (cambia con el idioma)
+const cpuName = (level) => ({ key: 'player.cpu', params: { level: { key: `cpu.${level}` } } });
 
 // Primera línea del registro (antes de "Turno de …"): el orden sorteado
 function logOrder(g, setup) {
@@ -212,7 +235,10 @@ function startLocalGame() {
     return;
   }
   lastSetup = form; // el formulario conserva el orden escrito
-  const setup = form.map((p, i) => ({ ...p, name: p.name || t('setup.defaultName', { n: i + 1 }) }));
+  const vsCpu = localMode === 'cpu';
+  const setup = form.map((p, i) => (vsCpu && i === 1
+    ? { color: p.color, name: cpuName(lastCpuLevel), cpu: lastCpuLevel }
+    : { color: p.color, name: p.name || t('setup.defaultName', { n: i + 1 }), cpu: null }));
   lastOptions = readOptions(lastOptions);
   confirmSurrender = null;
   stopCpu();
@@ -227,6 +253,8 @@ function startLocalGame() {
 // ---------- menú ----------
 
 function leaveOnline() {
+  clearInterval(heartbeat);
+  heartbeat = null;
   net.peer?.destroy();
   Object.assign(net, { mode: 'local', peer: null, code: '', me: null, hostConn: null, players: [], spectators: [], order: [], options: { ...lastOptions } });
 }
@@ -258,9 +286,17 @@ function createRoom(code = randomCode(), retry = null) {
   net.me = 0;
   net.players = [{ name, color, conn: null }];
   showScreen(() => connectingHtml(t('host.creating')));
+  startHeartbeat(() => {
+    const now = Date.now();
+    for (const conn of [...net.players.map((p) => p.conn), ...net.spectators]) {
+      if (!conn) continue;
+      send(conn, { t: 'ping' });
+      if (now - (conn.lastSeen ?? now) > TIMEOUT) { conn.close(); hostConnClosed(conn); }
+    }
+  });
   net.peer = openRoom(code, {
     onOpen: () => showLobby(),
-    onConnect: () => {}, // se espera al mensaje "hello" con el nombre
+    onConnect: (conn) => { conn.lastSeen = Date.now(); }, // se espera al mensaje "hello" con el nombre
     onMessage: hostMessage,
     onClose: hostConnClosed,
     onError: (err) => {
@@ -318,6 +354,9 @@ function showLobby() {
 }
 
 function hostMessage(conn, msg) {
+  conn.lastSeen = Date.now();
+  if (msg.t === 'ping') return;
+  if (msg.t === 'bye') { hostConnClosed(conn); return; }
   if (msg.t === 'hello') {
     const name = String(msg.name ?? '').trim().slice(0, 16) || t('net.guestName');
     if (game) {
@@ -325,6 +364,9 @@ function hostMessage(conn, msg) {
       const seat = net.players.findIndex((p, i) => i > 0 && !p.conn && p.name === name);
       if (seat > 0) {
         net.players[seat].conn = conn;
+        // Recupera el control (aunque la CPU esté a mitad de su turno)
+        const gp = game.players[gameSeat(seat)];
+        if (gp.standIn) { gp.cpu = null; gp.standIn = false; }
         game.say('reconnected', { name });
       } else {
         net.spectators.push(conn);
@@ -367,7 +409,15 @@ function hostConnClosed(conn) {
     showLobby();
   } else {
     net.players[seat].conn = null;
-    game.say('disconnected', { name: net.players[seat].name });
+    // Mientras no vuelva, juega por él una CPU de nivel medio
+    const gp = game.players[gameSeat(seat)];
+    if (game.phase !== 'gameOver' && !gp.cpu) {
+      gp.cpu = 'medium';
+      gp.standIn = true;
+      game.say('disconnectedCpu', { name: net.players[seat].name, level: { key: 'cpu.medium' } }, 'turn', gameSeat(seat));
+    } else {
+      game.say('disconnected', { name: net.players[seat].name });
+    }
     update();
   }
 }
@@ -413,15 +463,15 @@ function joinGame() {
     onOpen: (conn) => {
       connected = true;
       net.hostConn = conn;
+      conn.lastSeen = Date.now();
       send(conn, { t: 'hello', name });
+      startHeartbeat(() => {
+        send(conn, { t: 'ping' });
+        if (Date.now() - conn.lastSeen > TIMEOUT) hostLost();
+      });
     },
     onMessage: guestMessage,
-    onClose: () => {
-      if (net.mode !== 'guest') return;
-      leaveOnline();
-      clearBoard();
-      showScreen(() => messageHtml(t('lost.title'), t('lost.text')));
-    },
+    onClose: () => hostLost(),
     onError: (err) => {
       if (net.mode !== 'guest' || connected) return;
       leaveOnline();
@@ -430,7 +480,16 @@ function joinGame() {
   });
 }
 
+function hostLost() {
+  if (net.mode !== 'guest') return;
+  leaveOnline();
+  clearBoard();
+  showScreen(() => messageHtml(t('lost.title'), t('lost.text')));
+}
+
 function guestMessage(msg) {
+  if (net.hostConn) net.hostConn.lastSeen = Date.now();
+  if (msg.t === 'ping') return;
   if (msg.t === 'lobby') {
     clearBoard();
     net.me = msg.lobby.me;
@@ -459,6 +518,7 @@ const GAME_ACTIONS = {
   advance: () => game.advanceBoard(),
   chooseFarm: (i) => game.chooseFarm(i),
   plot: (i) => game.choosePlot(i),
+  storeAssorted: () => game.storeAssorted(),
   replace: (type) => game.chooseReplace(type),
   store: (i) => game.resolveHarvestStore(i),
   storeNone: () => game.resolveHarvestStore(null),
@@ -486,7 +546,9 @@ const SURRENDER_ACTIONS = {
 
 const MENU_ACTIONS = {
   menu: () => showMenu(),
-  menuLocal: () => showSetup(),
+  menuLocal: () => showLocalChoice(),
+  localHuman: () => showSetup('human'),
+  localCpu: () => showSetup('cpu'),
   menuHost: () => showHostForm(),
   menuJoin: () => showJoinForm(),
   start: () => startLocalGame(),
@@ -570,6 +632,10 @@ document.addEventListener('mouseover', (e) => {
 // ---------- arranque ----------
 
 window.addEventListener('resize', fit);
+// El invitado que cierra la pestaña se despide: el anfitrión lo sabe al momento
+window.addEventListener('pagehide', () => {
+  if (net.mode === 'guest' && net.hostConn) { send(net.hostConn, { t: 'bye' }); net.hostConn.close(); }
+});
 window.addEventListener('beforeunload', (e) => {
   // Si el anfitrión cierra la pestaña se acaba la partida de todos: se pide confirmación
   if (net.mode === 'host' && game && game.phase !== 'gameOver') e.preventDefault();

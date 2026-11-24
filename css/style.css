@@ -546,3 +546,44 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
 .lang-btn img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .lang-btn:hover { opacity: .9; transform: translateY(-1px); }
 .lang-btn.on { opacity: 1; filter: none; box-shadow: 0 0 0 2px #ffd54a; }
+
+/* ---------- Fin de partida: estadísticas ---------- */
+
+.dialog { max-height: 94vh; overflow-y: auto; }
+.game-over { max-width: 1040px; }
+.game-over h1 { margin-bottom: 8px; }
+.stats-global { display: flex; gap: 16px; align-items: stretch; justify-content: center; margin-bottom: 14px; }
+.chart { margin: 0; flex: 1; min-width: 0; max-width: 680px; padding: 10px 12px 6px; background: #fff; border: 2px solid #2b1d05; border-radius: 12px; }
+.chart figcaption { font: 17px 'Lilita One', sans-serif; text-align: left; }
+.chart svg { display: block; width: 100%; height: auto; }
+.chart .grid { stroke: #e6e0cf; stroke-width: 1; }
+.chart .axis { font: 12px 'Nunito', sans-serif; fill: #6b604a; }
+.chart .hover-col { fill: transparent; }
+.chart .hover-col:hover { fill: rgba(43, 29, 5, .06); }
+.axis-title { font-size: 12px; color: #6b604a; margin-top: -4px; }
+.legend { display: flex; gap: 14px; justify-content: flex-start; font-size: 14px; font-weight: 700; margin: 2px 0 4px; }
+.legend i, .donut li i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tiles.column { grid-template-columns: 1fr; align-content: start; min-width: 170px; }
+.tile { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #fff; border: 2px solid #2b1d05; border-radius: 10px; text-align: left; }
+.tile span { font-size: 13px; color: #6b604a; font-weight: 700; }
+.tile b { font: 22px 'Lilita One', sans-serif; font-weight: 400; }
+.stats-players { display: flex; gap: 16px; justify-content: center; margin-bottom: 16px; }
+.player-stats { flex: 1; min-width: 0; max-width: 500px; padding: 12px 14px; border: 3px solid var(--pc); border-radius: 14px; background: rgba(255, 255, 255, .55); text-align: left; }
+.player-stats h3 { margin: 0 0 2px; font: 24px 'Lilita One', sans-serif; font-weight: 400; display: flex; align-items: center; gap: 8px; }
+.player-stats h3 i { width: 16px; height: 16px; border-radius: 50%; background: var(--pc); border: 2px solid #2b1d05; }
+.player-stats .final-row { margin: 0 0 10px; font-size: 14px; font-weight: 700; color: #6b604a; }
+.player-stats .tile b { font-size: 18px; }
+.donut { display: flex; gap: 12px; align-items: center; margin: 10px 0; }
+.donut svg { width: 120px; height: 120px; flex: none; }
+.donut .slice { stroke: var(--cream); stroke-width: 2; }
+.donut .slice:hover { opacity: .85; }
+.donut-total { font: 22px 'Lilita One', sans-serif; fill: #2b1d05; }
+.donut-sub { font: 11px 'Nunito', sans-serif; fill: #6b604a; }
+.donut ul { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.donut li { margin: 2px 0; }
+.awards h4 { margin: 8px 0 4px; font: 16px 'Lilita One', sans-serif; font-weight: 400; }
+.awards ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.award { padding: 3px 10px; border-radius: 12px; background: #fff; border: 2px solid #2b1d05; font-size: 14px; font-weight: 700; cursor: default; }
+.award.ach { background: #fff4c7; }
+.awards .none { font-size: 14px; color: #6b604a; }

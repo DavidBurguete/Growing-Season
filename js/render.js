@@ -3,7 +3,8 @@
 
 import { circlesOf, forcesExtras } from './game.js';
 import { CPU_LEVELS } from './cpu.js';
-import { t, loc, cardName, fmtNum, logText, LANGS, getLang } from './i18n.js';
+import { t, loc, cardName, fmtNum, logText, LANGS, getLang, pname } from './i18n.js';
+import { INCOME, computeAwards, bestTurn } from './stats.js';
 
 // Las rutas de los datos apuntan a los originales (assets/img/*.png);
 // en pantalla se usan las copias ligeras generadas por scripts/optimize-images.sh.
@@ -167,6 +168,7 @@ function upgradeCell(game, p, u, active) {
     if (p.warehouse.length) extra = countBadge(p.warehouse.length);
     if (active && game.canOpenWarehouse()) { act = 'warehouse'; hl = true; }
     if (pr?.source === 'warehouse' || pr?.type === 'chooseStored') { act = 'cancel'; hl = true; }
+    if (active && game.canStoreAssorted()) { act = 'storeAssorted'; hl = true; }
   }
   if (u.def.type === 'animal') {
     // Igual que los cultivos: la ficha marca el último círculo cobrado
@@ -189,10 +191,13 @@ function renderPlayer(game, p, index, me) {
 
   let button = '';
   // En partidas online, los botones solo aparecen en el ordenador del jugador al que le toca
-  if (active && !game.prompts.length && !p.cpu && (me === null || me === index)) {
+  const mine = active && !p.cpu && (me === null || me === index);
+  if (mine && !game.prompts.length) {
     if (game.phase === 'action') button = `<button class="btn" data-act="endActions">${t('btn.endActions')}</button>`;
     if (game.phase === 'buy') button = `<button class="btn" data-act="pass">${t('btn.pass')}</button>`;
   }
+  // Semillas varias con almacén: guardar la semilla en lugar de plantarla
+  if (mine && game.canStoreAssorted()) button = `<button class="btn" data-act="storeAssorted">${t('btn.toWarehouse')}</button>`;
 
   // Rendirse: en local, el jugador al que le toca (contra la CPU, el humano en cualquier momento);
   // online, cada uno desde su ordenador
@@ -203,7 +208,7 @@ function renderPlayer(game, p, index, me) {
 
   const banner = `
     <div class="banner" style="--banner:${color}">
-      <span class="name">${esc(p.name)}${me === index ? ` <small>(${t('player.you')})</small>` : ''}${p.cpu ? ` <small>(${t('player.cpu', { level: t(`cpu.${p.cpu}`) })})</small>` : ''}</span>
+      <span class="name">${esc(pname(p.name))}${me === index ? ` <small>(${t('player.you')})</small>` : ''}${p.standIn ? ` <small>(${t('player.cpu', { level: t(`cpu.${p.cpu}`) })})</small>` : ''}</span>
       <span class="coins">
         <span class="coin-stack"><img src="${asset(IMG.coin1)}"><img src="${asset(IMG.coin5)}"><img src="${asset(IMG.coin10)}"></span>
         x ${p.coins}
@@ -400,27 +405,44 @@ export function optionsHtml(cfg, options, { editable = true } = {}) {
   </div>`;
 }
 
-// Quién controla a cada jugador en la partida local: una persona o la CPU de un nivel
-const cpuOptions = (sel) => [['', t('cpu.human')], ...Object.keys(CPU_LEVELS).map((k) => [k, t('player.cpu', { level: t(`cpu.${k}`) })])]
-  .map(([k, v]) => `<option value="${k}" ${k === (sel ?? '') ? 'selected' : ''}>${v}</option>`).join('');
+// Partida local: contra otra persona o contra la CPU
+export function localChoiceHtml() {
+  return `
+    <h2>${t('local.title')}</h2>
+    <div class="menu-buttons">
+      <button class="btn" data-act="localHuman">${t('local.human')}</button>
+      <button class="btn" data-act="localCpu">${t('local.cpu')}</button>
+    </div>
+    <p></p>
+    <button class="btn secondary" data-act="menu">${t('btn.back')}</button>`;
+}
 
-export function setupDialogHtml(cfg, defaults, options) {
+const cpuOptions = (sel) => Object.keys(CPU_LEVELS)
+  .map((k) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${t('player.cpu', { level: t(`cpu.${k}`) })}</option>`).join('');
+
+// cpu: nivel de la CPU si el segundo jugador es la CPU (sin nombre: solo nivel y color);
+// el primer jugador siempre es una persona
+export function setupDialogHtml(cfg, defaults, options, { cpu = null } = {}) {
   const opts = (sel) => Object.entries(cfg.colors)
     .map(([k, v]) => {
       const taken = k !== sel && defaults.some((d) => d.color === k);
       return `<option value="${k}" ${k === sel ? 'selected' : ''} ${taken ? 'disabled' : ''}>${esc(loc(v, 'label'))}</option>`;
     }).join('');
+  const color = (i, d) => `<select id="color-${i}" class="color-select" aria-label="${t(cpu && i === 1 ? 'setup.cpuColor' : 'setup.colorLabel', { n: i + 1 })}">${opts(d.color)}</select>`;
   return `
     <h1>Growing Season</h1>
-    <p>${t('setup.subtitle')}</p>
-    ${defaults.map((d, i) => `
+    <p>${t(cpu ? 'setup.subtitleCpu' : 'setup.subtitle')}</p>
+    ${defaults.map((d, i) => (cpu && i === 1 ? `
+      <div class="setup-player">
+        <select id="cpu-1" class="cpu-level" aria-label="${t('setup.cpuLevel')}">${cpuOptions(cpu)}</select>
+        ${color(i, d)}
+      </div>` : `
       <div class="setup-player">
         <input id="name-${i}" value="${esc(d.name || t('setup.defaultName', { n: i + 1 }))}" maxlength="16" aria-label="${t('setup.nameLabel', { n: i + 1 })}">
-        <select id="color-${i}" class="color-select" aria-label="${t('setup.colorLabel', { n: i + 1 })}">${opts(d.color)}</select>
-        <select id="cpu-${i}" aria-label="${t('setup.cpuLabel', { n: i + 1 })}">${cpuOptions(d.cpu)}</select>
-      </div>`).join('')}
+        ${color(i, d)}
+      </div>`)).join('')}
     ${optionsHtml(cfg, options)}
-    <button class="btn secondary" data-act="menu">${t('btn.back')}</button>
+    <button class="btn secondary" data-act="menuLocal">${t('btn.back')}</button>
     <button class="btn" data-act="start">${t('btn.start')}</button>`;
 }
 
@@ -469,21 +491,144 @@ export function fishDialogHtml(game) {
 
 export function surrenderDialogHtml(game, index) {
   return `
-    <h2>${t('surrender.title', { name: esc(game.players[index].name) })}</h2>
+    <h2>${t('surrender.title', { name: esc(pname(game.players[index].name)) })}</h2>
     <p>${t('surrender.text')}</p>
     <button class="btn secondary" data-act="surrenderNo">${t('btn.cancel')}</button>
     <button class="btn danger" data-act="surrenderYes" data-i="${index}">${t('btn.surrender')}</button>`;
 }
 
+// ---------- fin de partida y estadísticas ----------
+
+// Colores de la tarta de ingresos (paleta categórica, en orden fijo)
+const INCOME_COLORS = { crops: '#2a78d6', animals: '#eb6834', expedition: '#1baf7a', plots: '#eda100', pickler: '#e87ba4', dogcat: '#008300' };
+const playerHex = (game, p) => game.cfg.colors[p.color]?.hex ?? '#444';
+
+function fmtDuration(ms) {
+  const sec = Math.max(0, Math.round(ms / 1000));
+  return t('stats.durationValue', { h: Math.floor(sec / 3600), m: Math.floor((sec % 3600) / 60), s: sec % 60 });
+}
+
+// Gráfica de líneas: monedas de cada jugador (en mano + en el tablero) a lo largo de la partida.
+// Cada ronda tiene una columna invisible con su descripción al pasar el ratón.
+function coinsChart(game) {
+  const series = game.stats.series;
+  const W = 640, H = 230, L = 40, R = 12, T = 12, B = 30;
+  const n = game.players.length;
+  const top = Math.max(10, ...series.flatMap((pt) => pt.v));
+  const step = top <= 40 ? 10 : top <= 100 ? 20 : top <= 200 ? 50 : 100;
+  const yMax = Math.ceil(top / step) * step;
+  const x = (i) => L + (series.length > 1 ? (i / (series.length - 1)) * (W - L - R) : 0);
+  const y = (v) => T + (1 - v / yMax) * (H - T - B);
+  const round = (turn) => Math.max(1, Math.ceil(turn / n));
+  const grid = [];
+  for (let v = 0; v <= yMax; v += step) {
+    grid.push(`<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 6}" y="${y(v) + 4}" class="axis" text-anchor="end">${v}</text>`);
+  }
+  // Rondas: primer y último punto de cada una
+  const rounds = new Map();
+  series.forEach((pt, i) => {
+    const r = round(pt.turn);
+    if (!rounds.has(r)) rounds.set(r, { first: i, last: i });
+    rounds.get(r).last = i;
+  });
+  const every = Math.max(1, Math.ceil(rounds.size / 10));
+  const ticks = [...rounds].filter(([r]) => r === 1 || r % every === 0)
+    .map(([r, o]) => `<text x="${x(o.first)}" y="${H - 10}" class="axis" text-anchor="middle">${r}</text>`).join('');
+  const cols = [...rounds].map(([r, o], k, arr) => {
+    const x0 = k ? (x(arr[k - 1][1].last) + x(o.first)) / 2 : L;
+    const x1 = k < arr.length - 1 ? (x(o.last) + x(arr[k + 1][1].first)) / 2 : W - R;
+    const tip = `<b>${t('stats.round', { n: r })}</b><br>${game.players.map((p, i) => `${esc(pname(p.name))}: ${series[o.last].v[i]}`).join('<br>')}`;
+    return `<rect x="${x0}" y="${T}" width="${Math.max(1, x1 - x0)}" height="${H - T - B}" class="hover-col" data-tip="${esc(tip)}"/>`;
+  }).join('');
+  const lines = game.players.map((p, i) => {
+    const pts = series.map((pt, k) => `${x(k).toFixed(1)},${y(pt.v[i]).toFixed(1)}`).join(' ');
+    return `<polyline points="${pts}" fill="none" stroke="${playerHex(game, p)}" stroke-width="2" stroke-linejoin="round"/>`;
+  }).join('');
+  const legend = game.players.map((p) => `<span><i style="background:${playerHex(game, p)}"></i>${esc(pname(p.name))}</span>`).join('');
+  return `<figure class="chart">
+    <figcaption>${t('stats.coinsChart')}</figcaption>
+    <div class="legend">${legend}</div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${t('stats.coinsChart')}">${grid.join('')}${lines}${ticks}${cols}</svg>
+    <div class="axis-title">${t('stats.roundAxis')}</div>
+  </figure>`;
+}
+
+// Tarta con agujero: de dónde salen las monedas que ha ganado el jugador
+function incomeDonut(st) {
+  const total = INCOME.reduce((s, k) => s + st.income[k], 0);
+  const R = 52, r = 32, C = 60;
+  let a = -Math.PI / 2;
+  const arcs = [];
+  for (const k of INCOME) {
+    const v = st.income[k];
+    if (!v) continue;
+    const da = (v / total) * Math.PI * 2;
+    const tip = `<b>${t(`income.${k}`)}</b><br>${t('stats.coinsPct', { coins: v, pct: Math.round((v / total) * 100) })}`;
+    if (da >= Math.PI * 2 - 1e-6) {
+      arcs.push(`<circle cx="${C}" cy="${C}" r="${(R + r) / 2}" fill="none" stroke="${INCOME_COLORS[k]}" stroke-width="${R - r}" data-tip="${esc(tip)}"/>`);
+    } else {
+      const p = (ang, rad) => `${(C + rad * Math.cos(ang)).toFixed(2)},${(C + rad * Math.sin(ang)).toFixed(2)}`;
+      const large = da > Math.PI ? 1 : 0;
+      arcs.push(`<path d="M${p(a, R)} A${R},${R} 0 ${large} 1 ${p(a + da, R)} L${p(a + da, r)} A${r},${r} 0 ${large} 0 ${p(a, r)} Z" fill="${INCOME_COLORS[k]}" class="slice" data-tip="${esc(tip)}"/>`);
+    }
+    a += da;
+  }
+  const legend = INCOME.filter((k) => st.income[k]).map((k) => `<li><i style="background:${INCOME_COLORS[k]}"></i>${t(`income.${k}`)} <b>${st.income[k]}</b></li>`).join('');
+  return `<div class="donut">
+    <svg viewBox="0 0 120 120" role="img" aria-label="${t('stats.income')}">${arcs.join('') || `<circle cx="${C}" cy="${C}" r="${(R + r) / 2}" fill="none" stroke="#d8cfb4" stroke-width="${R - r}"/>`}
+      <text x="${C}" y="${C + 2}" text-anchor="middle" class="donut-total">${total}</text><text x="${C}" y="${C + 16}" text-anchor="middle" class="donut-sub">${t('stats.coinsShort')}</text></svg>
+    <ul>${legend}</ul>
+  </div>`;
+}
+
+function playerStatsHtml(game, p, i, awards) {
+  const st = game.stats.players[i];
+  const fishing = game.options?.mode === 'fishing';
+  const bt = bestTurn(st);
+  const pct = st.flipped ? Math.round((st.won / st.flipped) * 100) : 0;
+  const tile = (label, value) => `<div class="tile"><span>${label}</span><b>${value}</b></div>`;
+  const titles = awards.titles.map((id) => `<li class="award" data-tip="${esc(t(`titleDesc.${id}`))}">🏅 ${t(`title.${id}`)}</li>`).join('');
+  const achievements = awards.achievements.map((id) => `<li class="award ach" data-tip="${esc(t(`titleDesc.${id}`))}">🏆 ${t(`title.${id}`)}</li>`).join('');
+  return `<section class="player-stats" style="--pc:${playerHex(game, p)}">
+    <h3><i></i>${esc(pname(p.name))}</h3>
+    <p class="final-row">${t('stats.final', { board: p.board, spaces: game.boardSpaces.length, coins: p.coins, crops: p.plots.filter((pl) => pl.crop).length })}</p>
+    <div class="tiles">
+      ${tile(t('stats.harvested'), st.harvested)}
+      ${tile(t('stats.bestTurn'), bt.turn ? t('stats.bestTurnValue', { n: bt.turn, coins: bt.coins }) : '—')}
+      ${tile(t(fishing ? 'stats.fishCards' : 'stats.mineCards'), st.flipped)}
+      ${tile(t('stats.winRate'), st.flipped ? `${pct} %` : '—')}
+    </div>
+    ${incomeDonut(st)}
+    <div class="awards">
+      <h4>${t('stats.titles')}</h4><ul>${titles || `<li class="none">${t('stats.none')}</li>`}</ul>
+      <h4>${t('stats.achievements')}</h4><ul>${achievements || `<li class="none">${t('stats.none')}</li>`}</ul>
+    </div>
+  </section>`;
+}
+
 export function gameOverHtml(game, { canRestart = true } = {}) {
-  const rows = game.players.map((p) => `<p>${t('over.row', { name: esc(p.name), board: p.board, spaces: game.boardSpaces.length, coins: p.coins, crops: p.plots.filter((pl) => pl.crop).length })}</p>`).join('');
   const title = game.winners.length === 1
-    ? t('over.wins', { name: esc(game.winners[0].name) })
+    ? t('over.wins', { name: esc(pname(game.winners[0].name)) })
     : t('over.shared');
   const button = canRestart
     ? `<button class="btn" data-act="restart">${t('over.restart')}</button>`
     : `<p>${t('over.hostRestarts')}</p>`;
   const gaveUp = game.surrendered !== null && game.surrendered !== undefined
-    ? `<p>${t('over.gaveUp', { name: esc(game.players[game.surrendered].name) })}</p>` : '';
-  return `<h1>${title}</h1>${gaveUp}${rows}${button}`;
+    ? `<p>${t('over.gaveUp', { name: esc(pname(game.players[game.surrendered].name)) })}</p>` : '';
+  if (!game.stats) return `<h1>${title}</h1>${gaveUp}${button}`;
+  const awards = computeAwards(game);
+  const st = game.stats;
+  const turns = Math.max(...st.players.map((x) => x.turns));
+  return `<div class="game-over">
+    <h1>${title}</h1>${gaveUp}
+    <div class="stats-global">
+      ${coinsChart(game)}
+      <div class="tiles column">
+        <div class="tile"><span>${t('stats.duration')}</span><b>${fmtDuration((st.end ?? Date.now()) - st.start)}</b></div>
+        <div class="tile"><span>${t('stats.turns')}</span><b>${turns}</b></div>
+      </div>
+    </div>
+    <div class="stats-players">${game.players.map((p, i) => playerStatsHtml(game, p, i, awards[i])).join('')}</div>
+    ${button}
+  </div>`;
 }

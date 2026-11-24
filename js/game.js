@@ -27,6 +27,19 @@ export const DEFAULT_OPTIONS = { extras: false, mode: 'mine', length: 'normal' }
 // En la partida larga hay más casillas de granero que mejoras sin estrella: se juega con todas
 export const forcesExtras = (length) => length === 'long';
 
+// Estadísticas de cada jugador para la pantalla final (ver js/stats.js)
+// income: monedas ganadas por origen; turnIncome[n] / turnExpedition[n]: lo ganado en su turno n + 1
+// (en la mina, monedas; en la pesca, peces pescados); flipped / won: cartas de mina o pesca
+// volteadas por el jugador y las que le dieron monedas; trips / emptyTrips: salidas y salidas
+// sin nada; wasted: riegos y cosechas de cartas descartadas sin gastar.
+const newStats = () => ({
+  turns: 0, harvested: 0,
+  income: { animals: 0, crops: 0, expedition: 0, plots: 0, pickler: 0, dogcat: 0 },
+  turnIncome: [], turnExpedition: [],
+  flipped: 0, won: 0, trips: 0, emptyTrips: 0, wasted: 0,
+  wateringDays: false, sickleDays: false, seizing: false,
+});
+
 export class Game {
   constructor(data, playerSetup, options = {}) {
     this.data = data;
@@ -70,6 +83,10 @@ export class Game {
 
     const rewards = this.startingRewards(playerSetup.length);
     this.players = playerSetup.map((p, i) => this.createPlayer(p, rewards[i]));
+    // series: evolución de las monedas de cada jugador (en mano + las colocadas en el tablero)
+    this.stats = { start: Date.now(), end: null, series: [], players: this.players.map(newStats) };
+    this.turnStats = null; // herrería durante el turno en curso (logro Arramplando)
+    this.track();
     this.startTurn();
   }
 
@@ -135,6 +152,15 @@ export class Game {
   // who: índice del jugador al que se refiere la línea (para pintarla de su color)
   say(key, params = {}, kind = 'info', who = this.players ? this.current : null) {
     this.log.push({ key, params, kind, turn: this.turnNumber, who });
+    this.track(); // toda ganancia o gasto deja una línea en el registro
+  }
+  statsOf(p) { return this.stats?.players[this.players.indexOf(p)]; }
+  // Añade un punto a la gráfica de monedas si ha cambiado el valor de algún jugador
+  track() {
+    if (!this.stats) return;
+    const v = this.players.map((p) => p.coins + p.board * this.cfg.coinsPerBoardSpace);
+    const last = this.stats.series[this.stats.series.length - 1];
+    if (!last || last.v.some((x, i) => x !== v[i])) this.stats.series.push({ turn: this.turnNumber, v });
   }
   has(p, type) { return p.upgrades.some((u) => u.def.type === type); }
   findUpgrade(p, type) { return p.upgrades.find((u) => u.def.type === type); }
@@ -142,8 +168,16 @@ export class Game {
   isMature(crop) { return crop.water >= circlesOf(crop.def); }
   idle() { return !this.prompts.length && (this.phase === 'action' || this.phase === 'buy'); }
   // why: { key, params } con el motivo (se traduce al pintar)
-  gain(p, coins, why) {
+  // cat: origen para las estadísticas ('animals', 'crops'…) o { origen: monedas } si son varios
+  gain(p, coins, why, cat) {
     if (!coins) return;
+    const st = this.statsOf(p);
+    if (st) {
+      if (typeof cat === 'string') st.income[cat] += coins;
+      else if (cat) for (const [k, v] of Object.entries(cat)) st.income[k] += v;
+      const n = Math.max(0, st.turns - 1);
+      st.turnIncome[n] = (st.turnIncome[n] ?? 0) + coins;
+    }
     p.coins += coins;
     this.say('gain', { name: p.name, coins, why }, 'coin', this.players.indexOf(p));
   }
@@ -189,6 +223,9 @@ export class Game {
     const p = this.player;
     this.phase = 'action';
     this.selection = [];
+    const st = this.statsOf(p);
+    st.turns++;
+    this.turnStats = { toolsShown: this.market.tools.filter(Boolean).length, toolsTaken: 0 };
     this.say('turn', { name: p.name }, 'turn');
 
     for (let i = 0; i < this.cfg.handSize; i++) {
@@ -204,6 +241,11 @@ export class Game {
       card.used = false;
       p.hand.push(card);
     }
+    // Logros: una mano entera solo de regaderas o solo de hoces
+    if (p.hand.length === this.cfg.handSize) {
+      if (p.hand.every((c) => c.def.water > 0 && !c.def.sickle)) st.wateringDays = true;
+      if (p.hand.every((c) => c.def.sickle > 0 && !c.def.water)) st.sickleDays = true;
+    }
 
     this.processFarm(p);
   }
@@ -214,14 +256,14 @@ export class Game {
       if (u.def.type !== 'animal') continue;
       const v = u.def.values[u.step % u.def.values.length];
       u.step++;
-      this.gain(p, v + fodder, { key: 'why.animal', params: { animal: u.def, fodder: !!fodder } });
+      this.gain(p, v + fodder, { key: 'why.animal', params: { animal: u.def, fodder: !!fodder } }, 'animals');
     }
 
     for (const u of p.upgrades) {
       if (u.def.type === 'pickler' && u.stored) {
         const c = circlesOf(u.stored.def);
         const row = u.def.table.find((r) => r.circles.includes(c));
-        this.gain(p, row ? row.coins : 0, { key: 'why.pickler', params: { crop: u.stored.def } });
+        this.gain(p, row ? row.coins : 0, { key: 'why.pickler', params: { crop: u.stored.def } }, 'pickler');
         this.market.seedDiscard.push(u.stored.def);
         u.stored = null;
       }
@@ -359,7 +401,9 @@ export class Game {
     this.checkHandEmpty();
   }
 
-  discardFromHand(p, card) {
+  // waste: los riegos y cosechas que le queden a la carta cuentan como desperdiciados
+  discardFromHand(p, card, waste = false) {
+    if (waste) this.statsOf(p).wasted += Math.max(0, card.waterLeft) + Math.max(0, card.sickleLeft);
     p.hand = p.hand.filter((c) => c !== card);
     this.toDiscard(p, card);
     this.selection = this.selection.filter((id) => id !== card.uid);
@@ -369,7 +413,7 @@ export class Game {
   discardSelected() {
     if (!this.canDiscardSelected()) return;
     const p = this.player;
-    for (const c of this.selectedCards()) this.discardFromHand(p, c);
+    for (const c of this.selectedCards()) this.discardFromHand(p, c, true);
     this.checkHandEmpty();
   }
 
@@ -382,7 +426,7 @@ export class Game {
     crop.water++;
     const max = circlesOf(crop.def);
     if (crop.water < max) {
-      this.gain(p, crop.def.waterRewards[crop.water - 1], { key: `why.${why}`, params: { crop: crop.def } });
+      this.gain(p, crop.def.waterRewards[crop.water - 1], { key: `why.${why}`, params: { crop: crop.def } }, 'crops');
     } else {
       this.say('ready', { crop: crop.def });
     }
@@ -397,8 +441,10 @@ export class Game {
     const fert = this.has(p, 'fertiliser');
     if (fert) coins += 1;
     const bonus = !!plot.def && plot.def.circles.includes(circlesOf(crop.def));
-    if (bonus) coins += plot.def.bonus;
-    this.gain(p, coins, { key: 'why.harvest', params: { how: why, crop: crop.def, fert, plot: bonus } });
+    const extra = bonus ? plot.def.bonus : 0;
+    this.statsOf(p).harvested++;
+    this.gain(p, coins + extra, { key: 'why.harvest', params: { how: why, crop: crop.def, fert, plot: bonus } },
+      { crops: coins, plots: extra });
 
     const storages = p.upgrades.filter((u) => (u.def.type === 'pickler' || u.def.type === 'seedmaker') && !u.stored);
     if (storages.length) {
@@ -440,7 +486,15 @@ export class Game {
     m.mineRevealed = this.drawFrom('mineDeck', 'mineDiscard');
     if (!m.mineRevealed) return;
     this.fresh.push('mine:0');
-    if (m.mineRevealed.coins) this.gain(p, m.mineRevealed.coins, { key: `why.${why}` });
+    if (why === 'mine') {
+      const st = this.statsOf(p);
+      const n = st.turns - 1;
+      st.trips++;
+      st.flipped++;
+      if (m.mineRevealed.coins) st.won++; else st.emptyTrips++;
+      st.turnExpedition[n] = (st.turnExpedition[n] ?? 0) + m.mineRevealed.coins;
+    }
+    if (m.mineRevealed.coins) this.gain(p, m.mineRevealed.coins, { key: `why.${why}` }, why === 'mine' ? 'expedition' : 'dogcat');
     else this.say('mineNothing', { name: p.name, why: { key: `why.${why}` } });
   }
 
@@ -467,6 +521,7 @@ export class Game {
     for (const c of cards) this.discardFromHand(p, c);
     this.selection = [];
     this.fishing = { power, caught: [] };
+    this.statsOf(p).trips++;
     this.say('fishOut', { name: p.name, power });
     this.castLine();
   }
@@ -481,6 +536,7 @@ export class Game {
     if (!fish) { this.say('fishNoCards'); this.endFishing(); return; }
     m.mineRevealed = fish;
     this.fresh.push('mine:0');
+    this.statsOf(p).flipped++;
     if (fish.fish <= f.power) {
       f.power -= fish.fish;
       f.caught.push(fish);
@@ -518,7 +574,12 @@ export class Game {
     this.fishing = null;
     if (!f) return;
     const coins = f.caught.reduce((s, c) => s + c.coins, 0);
-    this.gain(p, coins, { key: 'why.fishing', params: { n: f.caught.length } });
+    const st = this.statsOf(p);
+    const n = st.turns - 1;
+    st.won += f.caught.length;
+    if (!f.caught.length) st.emptyTrips++;
+    st.turnExpedition[n] = (st.turnExpedition[n] ?? 0) + f.caught.length;
+    this.gain(p, coins, { key: 'why.fishing', params: { n: f.caught.length } }, 'expedition');
     this.market.mineDiscard.push(...f.caught);
     if (!this.prompts.length) this.checkHandEmpty();
   }
@@ -533,7 +594,7 @@ export class Game {
     m.mineDiscard.push(fish);
     this.fresh.push('mine:0');
     // El gato solo pesca peces de 2 o menos; si es más grande, se escapa
-    if (fish.fish <= 2) this.gain(p, fish.coins, { key: 'why.dogcatFish' });
+    if (fish.fish <= 2) this.gain(p, fish.coins, { key: 'why.dogcatFish' }, 'dogcat');
     else this.say('catEscape', { fish: fish.fish });
   }
 
@@ -541,7 +602,7 @@ export class Game {
   endActions() {
     if (this.phase !== 'action' || this.prompts.length) return;
     const p = this.player;
-    for (const c of [...p.hand]) this.discardFromHand(p, c);
+    for (const c of [...p.hand]) this.discardFromHand(p, c, true);
     this.selection = [];
     this.toBuyPhase();
   }
@@ -682,11 +743,26 @@ export class Game {
     this.afterPrompt();
   }
 
+  // Semillas varias con almacén: en lugar de plantar la semilla, guardarla en el almacén
+  canStoreAssorted() {
+    const pr = this.prompts[0];
+    return pr?.type === 'choosePlot' && pr.source === 'assorted' && this.has(this.player, 'warehouse');
+  }
+
+  storeAssorted() {
+    if (!this.canStoreAssorted()) return;
+    const pr = this.prompts.shift();
+    this.player.warehouse.push(pr.seed);
+    this.say('toWarehouse', { seed: pr.seed });
+    this.afterPrompt();
+  }
+
   buyTool(i) {
     if (!this.canBuyTool(i)) return;
     const p = this.player;
     const def = this.market.tools[i];
     this.market.tools[i] = null;
+    this.turnStats.toolsTaken++;
     p.coins -= def.cost;
     this.say('buy', { name: p.name, card: def, cost: def.cost });
     const opts = this.toolReplaceOptions(p, def);
@@ -699,7 +775,7 @@ export class Game {
     const pr = this.prompts[0];
     if (!pr || pr.type !== 'chooseReplace' || !pr.options.includes(type)) return;
     this.prompts.shift();
-    if (pr.giftSlot !== undefined) this.market.tools[pr.giftSlot] = null;
+    if (pr.giftSlot !== undefined) { this.market.tools[pr.giftSlot] = null; this.turnStats.toolsTaken++; }
     this.replaceStarter(this.player, type, pr.tool);
     if (pr.giftSlot !== undefined) this.continueToolGift();
     this.afterPrompt();
@@ -761,6 +837,7 @@ export class Game {
         return;
       }
       this.market.tools[slot] = null;
+      this.turnStats.toolsTaken++;
       this.replaceStarter(p, opts[0], def);
     }
   }
@@ -790,8 +867,10 @@ export class Game {
     if (this.phase === 'buy') this.checkAutoEnd();
   }
 
+  // El turno acaba solo si no queda nada que comprar o si el jugador ha colocado su última moneda
   checkAutoEnd() {
-    if (this.phase === 'buy' && !this.prompts.length && !this.anyBuyOption()) this.endTurn();
+    if (this.phase !== 'buy' || this.prompts.length) return;
+    if (!this.anyBuyOption() || this.player.board >= this.boardSpaces.length) this.endTurn();
   }
 
   passTurn() {
@@ -801,6 +880,9 @@ export class Game {
 
   endTurn() {
     const p = this.player;
+    // Logro Arramplando: se ha llevado todas las cartas de la herrería y tiene todas las parcelas ocupadas
+    const ts = this.turnStats;
+    if (ts && ts.toolsShown > 0 && ts.toolsTaken >= ts.toolsShown && !this.freePlots(p).length) this.statsOf(p).seizing = true;
     this.market.assortedReveal = null;
     this.refillMarket();
     if (p.board >= this.boardSpaces.length && !this.lastRound) {
@@ -817,6 +899,7 @@ export class Game {
   surrender(index) {
     if (this.phase === 'gameOver' || !this.players[index]) return;
     this.surrendered = index;
+    this.stats.end = Date.now();
     this.prompts = [];
     this.fishing = null;
     this.farmStep = null;
@@ -830,6 +913,7 @@ export class Game {
   // después más cultivos plantados; si persiste, comparten la victoria.
   finish() {
     this.phase = 'gameOver';
+    this.stats.end = Date.now();
     const crops = (p) => p.plots.filter((pl) => pl.crop).length;
     let cands = this.players.filter((p) => p.board >= this.boardSpaces.length);
     const maxCoins = Math.max(...cands.map((p) => p.coins));
