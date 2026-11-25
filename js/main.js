@@ -4,7 +4,7 @@ import { t, setLang, getLang } from './i18n.js';
 import {
   renderAll, showDialog, hideDialog, setupDialogHtml, replaceDialogHtml,
   harvestStoreDialogHtml, warehouseDialogHtml, gameOverHtml, localChoiceHtml,
-  fishDialogHtml, surrenderDialogHtml, renderLangPicker,
+  fishDialogHtml, surrenderDialogHtml, renderLangPicker, goStatsSlide, statsSlideBy,
   menuHtml, hostFormHtml, joinFormHtml, connectingHtml, lobbyHtml, messageHtml,
 } from './render.js';
 import {
@@ -176,7 +176,7 @@ function update() {
   renderAll(game, { me: online() ? net.me : null });
   document.body.classList.toggle('watching', game.phase !== 'gameOver' && !myTurn());
   const pr = game.prompts[0];
-  if (game.phase === 'gameOver') { confirmSurrender = null; showDialog(gameOverHtml(game, { canRestart: net.mode !== 'guest' })); }
+  if (game.phase === 'gameOver') { confirmSurrender = null; showDialog(gameOverHtml(game, { canRestart: net.mode !== 'guest', me: online() ? net.me : null })); }
   else if (confirmSurrender !== null) showDialog(surrenderDialogHtml(game, confirmSurrender));
   else if (!myTurn()) hideDialog();
   else if (pr?.type === 'fish') showDialog(fishDialogHtml(game), 'fishing');
@@ -545,6 +545,9 @@ const SURRENDER_ACTIONS = {
 };
 
 const MENU_ACTIONS = {
+  statsPrev: () => statsSlideBy(-1),
+  statsNext: () => statsSlideBy(1),
+  statsGo: (i) => goStatsSlide(i),
   menu: () => showMenu(),
   menuLocal: () => showLocalChoice(),
   localHuman: () => showSetup('human'),

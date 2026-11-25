@@ -510,7 +510,7 @@ function fmtDuration(ms) {
 
 // Gráfica de líneas: monedas de cada jugador (en mano + en el tablero) a lo largo de la partida.
 // Cada ronda tiene una columna invisible con su descripción al pasar el ratón.
-function coinsChart(game) {
+function coinsChart(game, extra = '') {
   const series = game.stats.series;
   const W = 640, H = 230, L = 40, R = 12, T = 12, B = 30;
   const n = game.players.length;
@@ -550,6 +550,7 @@ function coinsChart(game) {
     <div class="legend">${legend}</div>
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${t('stats.coinsChart')}">${grid.join('')}${lines}${ticks}${cols}</svg>
     <div class="axis-title">${t('stats.roundAxis')}</div>
+    ${extra}
   </figure>`;
 }
 
@@ -589,14 +590,14 @@ function playerStatsHtml(game, p, i, awards) {
   const tile = (label, value) => `<div class="tile"><span>${label}</span><b>${value}</b></div>`;
   const titles = awards.titles.map((id) => `<li class="award" data-tip="${esc(t(`titleDesc.${id}`))}">🏅 ${t(`title.${id}`)}</li>`).join('');
   const achievements = awards.achievements.map((id) => `<li class="award ach" data-tip="${esc(t(`titleDesc.${id}`))}">🏆 ${t(`title.${id}`)}</li>`).join('');
-  return `<section class="player-stats" style="--pc:${playerHex(game, p)}">
+  return `<section class="player-stats" style="--pc:${playerHex(game, p)}" aria-label="${esc(pname(p.name))}">
     <h3><i></i>${esc(pname(p.name))}</h3>
     <p class="final-row">${t('stats.final', { board: p.board, spaces: game.boardSpaces.length, coins: p.coins, crops: p.plots.filter((pl) => pl.crop).length })}</p>
     <div class="tiles">
       ${tile(t('stats.harvested'), st.harvested)}
       ${tile(t('stats.bestTurn'), bt.turn ? t('stats.bestTurnValue', { n: bt.turn, coins: bt.coins }) : '—')}
       ${tile(t(fishing ? 'stats.fishCards' : 'stats.mineCards'), st.flipped)}
-      ${tile(t('stats.winRate'), st.flipped ? `${pct} %` : '—')}
+      ${tile(t(fishing ? 'stats.winRateFishing' : 'stats.winRateMine'), st.flipped ? t('stats.winRateValue', { pct, won: st.won, total: st.flipped }) : '—')}
     </div>
     ${incomeDonut(st)}
     <div class="awards">
@@ -606,7 +607,70 @@ function playerStatsHtml(game, p, i, awards) {
   </section>`;
 }
 
-export function gameOverHtml(game, { canRestart = true } = {}) {
+// Carrusel de estadísticas individuales: una tarjeta por jugador. Solo se mueve cuando el
+// jugador pulsa las flechas o los puntos o arrastra la tarjeta, y no da la vuelta.
+// La tarjeta visible se recuerda aunque se vuelva a pintar el diálogo (misma partida).
+let slide = { key: null, index: 0, count: 0 };
+
+function carouselHtml(game, awards, start) {
+  const key = game.stats.start;
+  if (slide.key !== key) slide = { key, index: start, count: game.players.length };
+  const i = slide.index;
+  const dots = game.players.map((p, k) => `<button class="dot${k === i ? ' on' : ''}" data-act="statsGo" data-i="${k}" style="--pc:${playerHex(game, p)}" aria-label="${esc(pname(p.name))}"></button>`).join('');
+  return `<div class="stats-carousel">
+    <div class="carousel-viewport">
+      <div class="carousel-track" style="transform:translateX(${-i * 100}%)">${game.players.map((p, k) => playerStatsHtml(game, p, k, awards[k])).join('')}</div>
+    </div>
+    <div class="carousel-nav">
+      <button class="nav-arrow" data-act="statsPrev" aria-label="${t('stats.prev')}" ${i === 0 ? 'disabled' : ''}>‹</button>
+      <div class="dots">${dots}</div>
+      <button class="nav-arrow" data-act="statsNext" aria-label="${t('stats.next')}" ${i === slide.count - 1 ? 'disabled' : ''}>›</button>
+    </div>
+  </div>`;
+}
+
+// Mueve el carrusel a la tarjeta i (sin volver a pintar el diálogo)
+export function goStatsSlide(i) {
+  const root = document.querySelector('.stats-carousel');
+  if (!root) return;
+  slide.index = Math.max(0, Math.min(slide.count - 1, i));
+  const track = root.querySelector('.carousel-track');
+  track.style.transition = '';
+  track.style.transform = `translateX(${-slide.index * 100}%)`;
+  root.querySelectorAll('.dot').forEach((d, k) => d.classList.toggle('on', k === slide.index));
+  root.querySelector('[data-act=statsPrev]').disabled = slide.index === 0;
+  root.querySelector('[data-act=statsNext]').disabled = slide.index === slide.count - 1;
+}
+export const statsSlideBy = (d) => goStatsSlide(slide.index + d);
+
+// Arrastrar la tarjeta (ratón o dedo): si se mueve lo bastante, pasa a la siguiente o la anterior
+let drag = null;
+document.addEventListener('pointerdown', (e) => {
+  const vp = e.target.closest('.carousel-viewport');
+  if (!vp || e.button > 0) return;
+  drag = { x: e.clientX, dx: 0, w: vp.clientWidth, track: vp.querySelector('.carousel-track') };
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  drag.dx = e.clientX - drag.x;
+  if (Math.abs(drag.dx) < 6) return;
+  // En los extremos se resiste (no hay bucle)
+  const edge = (slide.index === 0 && drag.dx > 0) || (slide.index === slide.count - 1 && drag.dx < 0);
+  const dx = edge ? drag.dx / 4 : drag.dx;
+  drag.track.style.transition = 'none';
+  drag.track.style.transform = `translateX(calc(${-slide.index * 100}% + ${dx}px))`;
+});
+const endDrag = () => {
+  if (!drag) return;
+  const { dx, w } = drag;
+  drag = null;
+  goStatsSlide(slide.index + (Math.abs(dx) > Math.min(80, w / 5) ? (dx < 0 ? 1 : -1) : 0));
+};
+document.addEventListener('pointerup', endDrag);
+document.addEventListener('pointercancel', endDrag);
+
+// me: índice del jugador de este ordenador (online); en local, la primera persona
+export function gameOverHtml(game, { canRestart = true, me = null } = {}) {
   const title = game.winners.length === 1
     ? t('over.wins', { name: esc(pname(game.winners[0].name)) })
     : t('over.shared');
@@ -619,16 +683,17 @@ export function gameOverHtml(game, { canRestart = true } = {}) {
   const awards = computeAwards(game);
   const st = game.stats;
   const turns = Math.max(...st.players.map((x) => x.turns));
-  return `<div class="game-over">
-    <h1>${title}</h1>${gaveUp}
-    <div class="stats-global">
-      ${coinsChart(game)}
-      <div class="tiles column">
+  const tiles = `<div class="tiles">
         <div class="tile"><span>${t('stats.duration')}</span><b>${fmtDuration((st.end ?? Date.now()) - st.start)}</b></div>
         <div class="tile"><span>${t('stats.turns')}</span><b>${turns}</b></div>
-      </div>
+      </div>`;
+  const start = me ?? Math.max(0, game.players.findIndex((p) => !p.cpu));
+  return `<div class="game-over">
+    <h1>${title}</h1>${gaveUp}
+    <div class="stats-layout">
+      ${coinsChart(game, tiles)}
+      ${carouselHtml(game, awards, start)}
     </div>
-    <div class="stats-players">${game.players.map((p, i) => playerStatsHtml(game, p, i, awards[i])).join('')}</div>
     ${button}
   </div>`;
 }

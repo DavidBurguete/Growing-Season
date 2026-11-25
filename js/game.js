@@ -84,8 +84,12 @@ export class Game {
     const rewards = this.startingRewards(playerSetup.length);
     this.players = playerSetup.map((p, i) => this.createPlayer(p, rewards[i]));
     // series: evolución de las monedas de cada jugador (en mano + las colocadas en el tablero)
-    this.stats = { start: Date.now(), end: null, series: [], players: this.players.map(newStats) };
-    this.turnStats = null; // herrería durante el turno en curso (logro Arramplando)
+    // initialCrop: el trigo con el que empieza cada jugador (logro El tesTrigo)
+    this.stats = {
+      start: Date.now(), end: null, series: [],
+      players: this.players.map((p) => ({ ...newStats(), initialCrop: p.plots.find((pl) => pl.crop)?.crop.uid ?? null })),
+    };
+    this.turnStats = null; // mejoras de granja durante el turno en curso (logro Arramplando)
     this.track();
     this.startTurn();
   }
@@ -225,7 +229,7 @@ export class Game {
     this.selection = [];
     const st = this.statsOf(p);
     st.turns++;
-    this.turnStats = { toolsShown: this.market.tools.filter(Boolean).length, toolsTaken: 0 };
+    this.turnStats = { farmShown: this.market.farm.filter(Boolean).length, farmTaken: 0 };
     this.say('turn', { name: p.name }, 'turn');
 
     for (let i = 0; i < this.cfg.handSize; i++) {
@@ -672,6 +676,7 @@ export class Game {
     if (free.length === 0) {
       p.warehouse.push(def);
       this.say('toWarehouse', { seed: def });
+      if (source === 'assorted') this.market.assortedReveal = null;
       return;
     }
     if (free.length === 1 && !alwaysAsk) {
@@ -699,7 +704,7 @@ export class Game {
     const def = this.drawFrom('seedDeck', 'seedDiscard');
     p.coins -= u.def.cost ?? 1;
     this.say('assorted', { name: p.name, seed: def });
-    // Se muestra bajo el mazo hasta colocarla (o, si va al almacén, hasta el final del turno)
+    // Se muestra bajo el mazo hasta colocarla o guardarla en el almacén
     this.market.assortedReveal = def;
     this.fresh.push('assorted:0');
     this.placeSeed(p, def, { alwaysAsk: true, source: 'assorted' });
@@ -753,6 +758,7 @@ export class Game {
     if (!this.canStoreAssorted()) return;
     const pr = this.prompts.shift();
     this.player.warehouse.push(pr.seed);
+    this.market.assortedReveal = null;
     this.say('toWarehouse', { seed: pr.seed });
     this.afterPrompt();
   }
@@ -762,7 +768,6 @@ export class Game {
     const p = this.player;
     const def = this.market.tools[i];
     this.market.tools[i] = null;
-    this.turnStats.toolsTaken++;
     p.coins -= def.cost;
     this.say('buy', { name: p.name, card: def, cost: def.cost });
     const opts = this.toolReplaceOptions(p, def);
@@ -775,7 +780,7 @@ export class Game {
     const pr = this.prompts[0];
     if (!pr || pr.type !== 'chooseReplace' || !pr.options.includes(type)) return;
     this.prompts.shift();
-    if (pr.giftSlot !== undefined) { this.market.tools[pr.giftSlot] = null; this.turnStats.toolsTaken++; }
+    if (pr.giftSlot !== undefined) this.market.tools[pr.giftSlot] = null;
     this.replaceStarter(this.player, type, pr.tool);
     if (pr.giftSlot !== undefined) this.continueToolGift();
     this.afterPrompt();
@@ -837,7 +842,6 @@ export class Game {
         return;
       }
       this.market.tools[slot] = null;
-      this.turnStats.toolsTaken++;
       this.replaceStarter(p, opts[0], def);
     }
   }
@@ -849,6 +853,9 @@ export class Game {
     this.prompts.shift();
     this.market.farm[i] = null;
     const p = this.player;
+    // Logro Arramplando: se lleva todas las mejoras de granja que había al empezar el turno
+    const ts = this.turnStats;
+    if (ts && ++ts.farmTaken >= ts.farmShown) this.statsOf(p).seizing = true;
     const upgrade = { uid: uid(), def, step: 0, stored: null, armed: false, plotIndex: null };
     if (def.type === 'plot') {
       p.plots.push({ uid: uid(), def, crop: null });
@@ -880,9 +887,6 @@ export class Game {
 
   endTurn() {
     const p = this.player;
-    // Logro Arramplando: se ha llevado todas las cartas de la herrería y tiene todas las parcelas ocupadas
-    const ts = this.turnStats;
-    if (ts && ts.toolsShown > 0 && ts.toolsTaken >= ts.toolsShown && !this.freePlots(p).length) this.statsOf(p).seizing = true;
     this.market.assortedReveal = null;
     this.refillMarket();
     if (p.board >= this.boardSpaces.length && !this.lastRound) {
