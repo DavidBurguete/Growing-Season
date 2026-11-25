@@ -79,3 +79,7 @@ export function computeAwards(game) {
   });
   return out;
 }
+
+// Listas para el perfil de la cuenta: todos los títulos y todos los logros
+export const TITLE_IDS = TITLES.map((x) => x.id);
+export const ACHIEVEMENT_IDS = [...TITLES.filter((x) => x.kind === 'test').map((x) => x.id), ...ACHIEVEMENTS.map((x) => x.id)];

@@ -58,6 +58,8 @@ export class Game {
     this.lastRound = false;
     this.winners = [];
     this.turnNumber = 0;
+    // Identificador de la partida (las cuentas no guardan dos veces la misma)
+    this.id = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
     this.farmStep = null; // paso de las mejoras de inicio de turno (se reanuda tras cada pregunta)
     // Huecos del mercado recién repuestos (la interfaz los anima y vacía la lista)
     this.fresh = [];

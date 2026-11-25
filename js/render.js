@@ -582,14 +582,16 @@ function incomeDonut(st) {
   </div>`;
 }
 
-function playerStatsHtml(game, p, i, awards) {
+// fresh: premios conseguidos por primera vez en la cuenta ('title:id' / 'achievement:id')
+function playerStatsHtml(game, p, i, awards, fresh = null) {
   const st = game.stats.players[i];
   const fishing = game.options?.mode === 'fishing';
   const bt = bestTurn(st);
   const pct = st.flipped ? Math.round((st.won / st.flipped) * 100) : 0;
   const tile = (label, value) => `<div class="tile"><span>${label}</span><b>${value}</b></div>`;
-  const titles = awards.titles.map((id) => `<li class="award" data-tip="${esc(t(`titleDesc.${id}`))}">🏅 ${t(`title.${id}`)}</li>`).join('');
-  const achievements = awards.achievements.map((id) => `<li class="award ach" data-tip="${esc(t(`titleDesc.${id}`))}">🏆 ${t(`title.${id}`)}</li>`).join('');
+  const isNew = (kind, id) => (fresh?.has(`${kind}:${id}`) ? ` <span class="new-badge">${t('acc.new')}</span>` : '');
+  const titles = awards.titles.map((id) => `<li class="award" data-tip="${esc(t(`titleDesc.${id}`))}">🏅 ${t(`title.${id}`)}${isNew('title', id)}</li>`).join('');
+  const achievements = awards.achievements.map((id) => `<li class="award ach" data-tip="${esc(t(`titleDesc.${id}`))}">🏆 ${t(`title.${id}`)}${isNew('achievement', id)}</li>`).join('');
   return `<section class="player-stats" style="--pc:${playerHex(game, p)}" aria-label="${esc(pname(p.name))}">
     <h3><i></i>${esc(pname(p.name))}</h3>
     <p class="final-row">${t('stats.final', { board: p.board, spaces: game.boardSpaces.length, coins: p.coins, crops: p.plots.filter((pl) => pl.crop).length })}</p>
@@ -612,14 +614,14 @@ function playerStatsHtml(game, p, i, awards) {
 // La tarjeta visible se recuerda aunque se vuelva a pintar el diálogo (misma partida).
 let slide = { key: null, index: 0, count: 0 };
 
-function carouselHtml(game, awards, start) {
+function carouselHtml(game, awards, start, account) {
   const key = game.stats.start;
   if (slide.key !== key) slide = { key, index: start, count: game.players.length };
   const i = slide.index;
   const dots = game.players.map((p, k) => `<button class="dot${k === i ? ' on' : ''}" data-act="statsGo" data-i="${k}" style="--pc:${playerHex(game, p)}" aria-label="${esc(pname(p.name))}"></button>`).join('');
   return `<div class="stats-carousel">
     <div class="carousel-viewport">
-      <div class="carousel-track" style="transform:translateX(${-i * 100}%)">${game.players.map((p, k) => playerStatsHtml(game, p, k, awards[k])).join('')}</div>
+      <div class="carousel-track" style="transform:translateX(${-i * 100}%)">${game.players.map((p, k) => playerStatsHtml(game, p, k, awards[k], account?.me === k ? account.fresh : null)).join('')}</div>
     </div>
     <div class="carousel-nav">
       <button class="nav-arrow" data-act="statsPrev" aria-label="${t('stats.prev')}" ${i === 0 ? 'disabled' : ''}>‹</button>
@@ -670,7 +672,18 @@ document.addEventListener('pointerup', endDrag);
 document.addEventListener('pointercancel', endDrag);
 
 // me: índice del jugador de este ordenador (online); en local, la primera persona
-export function gameOverHtml(game, { canRestart = true, me = null } = {}) {
+// Guardado en la cuenta (solo partidas online): botón para iniciar sesión o estado del guardado.
+// Los botones data-acc los gestiona js/account.js.
+function accountLine(account) {
+  if (!account) return '';
+  if (account.status === 'pending') return `<div class="acc-save"><button class="btn" data-acc="save">${t('acc.saveProgress')}</button></div>`;
+  if (account.status === 'saving') return `<p class="acc-save">${t('acc.saving')}</p>`;
+  if (account.status === 'saved') return `<p class="acc-save ok">${t('acc.saved')}</p>`;
+  return `<p class="acc-save err">${t('acc.saveError')} <button class="btn small" data-acc="retry">${t('acc.retry')}</button></p>`;
+}
+
+// account: { status, fresh, me } de js/account.js (null si no hay cuentas o no se guarda)
+export function gameOverHtml(game, { canRestart = true, me = null, account = null } = {}) {
   const title = game.winners.length === 1
     ? t('over.wins', { name: esc(pname(game.winners[0].name)) })
     : t('over.shared');
@@ -692,8 +705,9 @@ export function gameOverHtml(game, { canRestart = true, me = null } = {}) {
     <h1>${title}</h1>${gaveUp}
     <div class="stats-layout">
       ${coinsChart(game, tiles)}
-      ${carouselHtml(game, awards, start)}
+      ${carouselHtml(game, awards, start, account)}
     </div>
+    ${accountLine(account)}
     ${button}
   </div>`;
 }

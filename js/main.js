@@ -1,6 +1,10 @@
 import { Game, DEFAULT_OPTIONS, forcesExtras, shuffle } from './game.js';
 import { cpuStep } from './cpu.js';
-import { t, setLang, getLang } from './i18n.js';
+import { t, setLang, getLang, loc } from './i18n.js';
+import { computeAwards } from './stats.js';
+import {
+  initAccount, submitResult, clearPending, resultInfo, refreshAccountUi,
+} from './account.js';
 import {
   renderAll, showDialog, hideDialog, setupDialogHtml, replaceDialogHtml,
   harvestStoreDialogHtml, warehouseDialogHtml, gameOverHtml, localChoiceHtml,
@@ -159,6 +163,7 @@ function switchLang(l) {
     .map((el) => [el.id, el.type === 'checkbox' ? el.checked : el.value, el.disabled]);
   setLang(l);
   renderLangPicker();
+  refreshAccountUi();
   if (game) { update(); return; }
   if (!screen) return;
   showDialog(screen());
@@ -176,7 +181,11 @@ function update() {
   renderAll(game, { me: online() ? net.me : null });
   document.body.classList.toggle('watching', game.phase !== 'gameOver' && !myTurn());
   const pr = game.prompts[0];
-  if (game.phase === 'gameOver') { confirmSurrender = null; showDialog(gameOverHtml(game, { canRestart: net.mode !== 'guest', me: online() ? net.me : null })); }
+  if (game.phase === 'gameOver') {
+    confirmSurrender = null;
+    const account = recordResult();
+    showDialog(gameOverHtml(game, { canRestart: net.mode !== 'guest', me: online() ? net.me : null, account }));
+  }
   else if (confirmSurrender !== null) showDialog(surrenderDialogHtml(game, confirmSurrender));
   else if (!myTurn()) hideDialog();
   else if (pr?.type === 'fish') showDialog(fishDialogHtml(game), 'fishing');
@@ -185,6 +194,54 @@ function update() {
   else if (pr?.type === 'chooseStored') showDialog(warehouseDialogHtml(game));
   else hideDialog();
   scheduleCpu();
+}
+
+// Cuentas: solo cuentan las partidas online, para el jugador de este ordenador (no los espectadores).
+// Devuelve el estado de guardado para la pantalla final (null si no hay nada que guardar).
+function recordResult() {
+  if (!online() || net.me === null || !game.players[net.me] || !game.id) return null;
+  const me = game.players[net.me];
+  const awards = computeAwards(game)[net.me];
+  submitResult({
+    gameId: game.id,
+    length: game.options.length,
+    mode: game.options.mode,
+    won: game.winners.some((w) => w.color === me.color), // la victoria compartida cuenta como victoria
+    titles: awards.titles,
+    achievements: awards.achievements,
+  });
+  const info = resultInfo(game.id);
+  return info && { ...info, me: net.me };
+}
+
+// Nombre de la cuenta: al iniciar sesión rellena los formularios; al cambiarlo desde el perfil
+// (live) también cambia en la sala o en la partida en curso, para todos (sin anotarlo en el registro).
+function applyAccountName(name, { live }) {
+  rememberName(name);
+  lastSetup[0].name = name;
+  for (const id of ['net-name', 'name-0']) {
+    const el = document.getElementById(id);
+    if (el && !el.disabled) el.value = name;
+  }
+  if (!live) return;
+  if (net.mode === 'guest') { send(net.hostConn, { t: 'rename', name }); return; }
+  if (net.mode === 'host') { renamePlayer(0, name); return; }
+  // Partida local contra la CPU: el jugador humano
+  if (game && localMode === 'cpu') {
+    const human = game.players.find((p) => !p.cpu);
+    if (human) { human.name = name; update(); }
+  }
+}
+
+// Anfitrión: cambia el nombre de un jugador de la sala (y de la partida, si ha empezado)
+function renamePlayer(seat, raw) {
+  const name = String(raw ?? '').trim().slice(0, 16);
+  if (!name || !net.players[seat]) return;
+  net.players[seat].name = name;
+  if (!game) { showLobby(); return; }
+  const gp = game.players[gameSeat(seat)];
+  if (gp) gp.name = name;
+  update();
 }
 
 function clearBoard() {
@@ -241,6 +298,7 @@ function startLocalGame() {
     : { color: p.color, name: p.name || t('setup.defaultName', { n: i + 1 }), cpu: null }));
   lastOptions = readOptions(lastOptions);
   confirmSurrender = null;
+  clearPending();
   stopCpu();
   // Orden aleatorio: cada jugador conserva su nombre y color, solo cambia quién empieza
   const order = shuffle([...setup]);
@@ -380,6 +438,7 @@ function hostMessage(conn, msg) {
     return;
   }
   const seat = seatOf(conn);
+  if (msg.t === 'rename' && seat > 0) { renamePlayer(seat, msg.name); return; }
   if (msg.t === 'color' && !game && seat > 0 && data.config.colors[msg.color]
       && !net.players.some((p) => p.color === msg.color)) {
     net.players[seat].color = msg.color;
@@ -429,6 +488,7 @@ function startOnlineGame() {
   const setup = net.order.map((i) => ({ name: net.players[i].name, color: net.players[i].color }));
   lastOptions = { ...net.options };
   confirmSurrender = null;
+  clearPending();
   game = new Game(data, setup, net.options);
   logOrder(game, setup);
   net.me = gameSeat(0);
@@ -497,7 +557,9 @@ function guestMessage(msg) {
   }
   if (msg.t === 'state') {
     net.me = msg.me;
+    const prevId = game?.id;
     game = hydrate(data, msg.state);
+    if (game.id !== prevId && game.phase !== 'gameOver') clearPending();
     window.game = game;
     update();
   }
@@ -649,6 +711,12 @@ renderLangPicker();
 
 try {
   data = await loadData();
+  initAccount({
+    currentName: () => myName(),
+    onName: applyAccountName,
+    onChange: () => { if (game?.phase === 'gameOver') update(); },
+    lengths: () => Object.entries(data.config.boards).map(([k, b]) => [k, loc(b, 'label')]),
+  });
   const sala = normalizeCode(new URLSearchParams(location.search).get('sala'));
   if (sala) showJoinForm('', sala);
   else showScreen(() => menuHtml());

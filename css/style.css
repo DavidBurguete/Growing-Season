@@ -598,3 +598,60 @@ body.watching #stage .space.hl { cursor: default; box-shadow: none; animation: n
 .award.ach { background: #fff4c7; }
 .awards .none { font-size: 14px; color: #6b604a; }
 @media (max-width: 820px) { .stats-layout { grid-template-columns: 1fr; } }
+
+/* ---------- Cuentas de jugador (js/account.js) ---------- */
+
+/* Botón de sesión / perfil: en la esquina, encima de las banderas */
+#account { position: fixed; top: 8px; right: 8px; z-index: calc(var(--z-tooltip) + 1); }
+body:has(#account .account-btn) #lang { top: 44px; }
+.account-btn {
+  font: 15px 'Lilita One', sans-serif; color: #2b1d05; background: var(--cream);
+  border: 2px solid #2b1d05; border-radius: 14px; padding: 3px 10px; cursor: pointer;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  box-shadow: 0 2px 0 #2b1d05;
+}
+.account-btn:hover { filter: brightness(1.05); }
+.account-btn.signed { background: #fff4c7; }
+
+#account-overlay {
+  position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 5);
+  display: none; align-items: center; justify-content: center;
+  background: rgba(20, 30, 50, .55);
+}
+#account-overlay.show { display: flex; }
+.account-dialog { width: 480px; max-width: calc(100vw - 32px); min-width: 0; box-sizing: border-box; text-align: left; }
+.account-dialog h2 { text-align: center; }
+.account-dialog h3 { margin: 16px 0 6px; font: 18px 'Lilita One', sans-serif; font-weight: 400; }
+.acc-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-weight: 800; font-size: 14px; }
+.acc-field input { font: 16px 'Nunito', sans-serif; padding: 6px 10px; border: 2px solid #2b1d05; border-radius: 8px; }
+.acc-name { position: relative; }
+.acc-name-state { font-size: 12px; font-weight: 700; color: #6b604a; min-height: 1em; }
+.acc-buttons { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
+.dialog .acc-buttons .btn + .btn { margin-left: 0; }
+.acc-buttons .btn.danger { margin-right: auto; }
+.acc-links { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 14px 0 0 !important; }
+.link { background: none; border: 0; padding: 0; font: 700 14px 'Nunito', sans-serif; color: #2b1d05; text-decoration: underline; cursor: pointer; }
+.acc-info { color: #2b5d18; font-weight: 700; }
+.acc-email { text-align: center; color: #6b604a; font-weight: 700; margin-top: -10px !important; }
+.acc-note { font-size: 12px; color: #6b604a; margin: 4px 0 0 !important; }
+.acc-table { width: 100%; border-collapse: collapse; font-size: 14px; background: #fff; border: 2px solid #2b1d05; border-radius: 10px; overflow: hidden; }
+.acc-table th, .acc-table td { padding: 4px 8px; text-align: right; border-bottom: 1px solid #e6e0cf; }
+.acc-table th:first-child { text-align: left; }
+.acc-table thead th { font-size: 12px; color: #6b604a; }
+.acc-table tfoot th, .acc-table tfoot td { font-weight: 800; border-bottom: 0; }
+.acc-awards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.acc-award { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border: 2px solid #2b1d05; border-radius: 10px; background: #fff; }
+.acc-award.got { background: #fff4c7; }
+.acc-award.locked { opacity: .55; filter: grayscale(1); border-style: dashed; }
+.acc-award-icon { font-size: 18px; line-height: 1.2; }
+.acc-award b { display: block; font-size: 14px; }
+.acc-award small { display: block; font-size: 12px; color: #6b604a; line-height: 1.25; }
+.acc-award .acc-date { margin-top: 2px; font-weight: 700; }
+@media (max-width: 520px) { .acc-awards { grid-template-columns: 1fr; } }
+
+/* Pantalla final: guardar progreso y premios nuevos */
+.acc-save { margin: 0 0 12px !important; font-weight: 800; }
+.acc-save.ok { color: #2b5d18; }
+.acc-save.err { color: var(--danger); }
+.new-badge { margin-left: 4px; padding: 0 6px; border-radius: 8px; background: var(--danger); color: #fff; font-size: 11px; vertical-align: 1px; }
+.acc-detail { display: block; margin-top: 2px; font-size: 11px; font-weight: 600; color: #6b604a; word-break: break-word; }
