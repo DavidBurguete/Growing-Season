@@ -619,7 +619,23 @@ body:has(#account .account-btn) #lang { top: 44px; }
   background: rgba(20, 30, 50, .55);
 }
 #account-overlay.show { display: flex; }
-.account-dialog { width: 480px; max-width: calc(100vw - 32px); min-width: 0; box-sizing: border-box; text-align: left; }
+.account-dialog {
+  width: 480px; max-width: calc(100vw - 32px); min-width: 0; box-sizing: border-box; text-align: left;
+  display: flex; flex-direction: column;
+  max-height: min(94vh, 820px); overflow: hidden;
+  padding: 24px 14px 24px 32px;
+}
+/* Scroll propio, como el del registro: fino, del color del borde y dentro del cuadro */
+.acc-scroll {
+  min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(43,29,5,.5) transparent;
+  scrollbar-gutter: stable;
+}
+.acc-scroll::-webkit-scrollbar { width: 8px; }
+.acc-scroll::-webkit-scrollbar-track { background: transparent; }
+.acc-scroll::-webkit-scrollbar-thumb { background: rgba(43,29,5,.5); border-radius: 4px; }
 .account-dialog h2 { text-align: center; }
 .account-dialog h3 { margin: 16px 0 6px; font: 18px 'Lilita One', sans-serif; font-weight: 400; }
 .acc-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-weight: 800; font-size: 14px; }

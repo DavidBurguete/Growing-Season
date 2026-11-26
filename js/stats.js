@@ -10,6 +10,10 @@ const AUTOMATIC = new Set(['sprinkler', 'harvester', 'seedmaker', 'dogcat', 'fod
 // Todos los animales (logro ¡Serás animal!): sin las mejoras extra no hay perro y gato y no se puede conseguir
 const ANIMALS = ['cow', 'pig', 'sheep', 'chicken', 'dogcat'];
 const IRONMAN_TOOLS = 12;
+// Cartas de mejora con las que se interactúa (logro Olvidado) y parcelas extra que hay (logro Antes todo esto era campo)
+const INTERACTIVE = new Set(['seedmaker', 'pickler', 'plot', 'assorted', 'warehouse']);
+const EXTRA_PLOTS = 4;
+const isWinner = (game, p) => (game.winners ?? []).some((w) => w.color === p.color);
 
 // Cartas de la herrería que tiene el jugador (todas las que no son iniciales)
 export const shopTools = (p) => [...p.deck, ...p.discard, ...p.hand].filter((c) => !c.starter).length;
@@ -47,6 +51,10 @@ const ACHIEVEMENTS = [
   { id: 'wheatness', test: (game, p, st) => st.initialCrop != null && p.plots.some((pl) => pl.crop?.uid === st.initialCrop) },
   { id: 'withered', test: (game, p, st) => st.harvested === 0 },
   { id: 'youAnimal', test: (game, p) => ANIMALS.every((id) => p.upgrades.some((u) => u.def.id === id)) },
+  { id: 'plotOfLand', test: (game, p) => p.upgrades.filter((u) => u.def.type === 'plot').length >= EXTRA_PLOTS },
+  { id: 'forgotten', test: (game, p) => p.upgrades.some((u) => INTERACTIVE.has(u.def.type) && !u.used) },
+  { id: 'gatheringDust', test: (game, p, st) => st.dusty },
+  { id: 'ironY', test: (game, p, st) => isWinner(game, p) && st.toolsBought === 0 },
 ];
 
 // Devuelve, para cada jugador, { titles: [id], achievements: [id] }.

@@ -44,7 +44,11 @@ export async function initAccount(h, { client = null } = {}) {
   try {
     if (!client) {
       const { createClient } = await import(SUPABASE_LIB);
-      client = createClient(projectUrl(), String(SUPABASE_ANON_KEY).trim());
+      // La sesión se queda guardada en este navegador (localStorage) y se renueva sola: no hay
+      // que volver a iniciarla al recargar ni otro día, hasta cerrar sesión.
+      client = createClient(projectUrl(), String(SUPABASE_ANON_KEY).trim(), {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      });
     }
   } catch (err) {
     console.warn('No se pudo cargar Supabase', err);
@@ -68,6 +72,7 @@ async function authChanged(event, session) {
     hooks.onChange();
     return;
   }
+  saveEmail(user.email);
   await loadProfile();
   renderAccountButton();
   if (S.profile?.name) hooks.onName(S.profile.name, { live: false });
@@ -174,10 +179,19 @@ export function refreshAccountUi() {
 
 // ---------- ventanas ----------
 
+// Último correo con el que se inició sesión en este navegador: rellena el formulario
+const EMAIL_KEY = 'gs-account-email';
+const savedEmail = () => { try { return localStorage.getItem(EMAIL_KEY) || ''; } catch { return ''; } };
+const saveEmail = (e) => { try { if (e) localStorage.setItem(EMAIL_KEY, e); } catch { /* sin almacenamiento */ } };
+
 function openView(name, extra = {}) {
   S.view = { name, ...extra };
+  if (['login', 'signup', 'forgot'].includes(name) && !S.view.email) S.view.email = savedEmail();
   renderView();
-  document.querySelector('#account-overlay input')?.focus();
+  // Con el correo ya puesto se empieza por la contraseña
+  const ov = document.getElementById('account-overlay');
+  const first = [...ov.querySelectorAll('input')].find((i) => !i.value) ?? ov.querySelector('input');
+  first?.focus();
 }
 function closeView() {
   S.view = null;
@@ -190,7 +204,8 @@ function renderView() {
   const v = S.view;
   if (!v) return;
   const html = { login: authHtml, signup: authHtml, verify: verifyHtml, forgot: forgotHtml, profile: profileHtml, confirmDelete: deleteHtml }[v.name](v);
-  ov.innerHTML = `<div class="dialog account-dialog" role="dialog" aria-modal="true">${html}</div>`;
+  // El contenido va en su propia caja con scroll, para que la barra quede dentro del borde redondeado
+  ov.innerHTML = `<div class="dialog account-dialog" role="dialog" aria-modal="true"><div class="acc-scroll">${html}</div></div>`;
   ov.className = 'show';
 }
 

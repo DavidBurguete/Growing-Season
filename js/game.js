@@ -33,11 +33,12 @@ export const forcesExtras = (length) => length === 'long';
 // volteadas por el jugador y las que le dieron monedas; trips / emptyTrips: salidas y salidas
 // sin nada; wasted: riegos y cosechas de cartas descartadas sin gastar.
 const newStats = () => ({
-  turns: 0, harvested: 0,
+  turns: 0, harvested: 0, toolsBought: 0,
   income: { animals: 0, crops: 0, expedition: 0, plots: 0, pickler: 0, dogcat: 0 },
   turnIncome: [], turnExpedition: [],
   flipped: 0, won: 0, trips: 0, emptyTrips: 0, wasted: 0,
   wateringDays: false, sickleDays: false, seizing: false,
+  dusty: false, // logro Cogiendo polvo: cosechó un cultivo que llevaba más de 5 turnos suyos plantado
 });
 
 export class Game {
@@ -142,7 +143,18 @@ export class Game {
     };
   }
 
-  makeCrop(def) { return { uid: uid(), def, water: 0 }; }
+  // planted: turno propio del jugador en el que se plantó (logro Cogiendo polvo)
+  makeCrop(def, planted = 0) { return { uid: uid(), def, water: 0, planted }; }
+
+  // Planta en una parcela. Si es una parcela extra, su carta cuenta como usada (logro Olvidado)
+  plant(p, plotIndex, def) {
+    const plot = p.plots[plotIndex];
+    plot.crop = this.makeCrop(def, this.statsOf(p)?.turns ?? 0);
+    if (plot.def) this.markUsed(p.upgrades.find((u) => u.plotIndex === plotIndex));
+  }
+
+  // Mejoras de granja con las que se interactúa: se marca cuándo se usan (logro Olvidado)
+  markUsed(u) { if (u) u.used = true; }
 
   // ---------- utilidades ----------
 
@@ -331,6 +343,7 @@ export class Game {
       this.seedmakerPlant(p, u);
     } else if (this.has(p, 'warehouse')) {
       p.warehouse.push(u.stored.def);
+      this.markUsed(this.findUpgrade(p, 'warehouse'));
       this.say('seedmakerToWarehouse', { crop: u.stored.def });
       u.stored = null;
       u.armed = false;
@@ -340,7 +353,7 @@ export class Game {
   seedmakerPlant(p, u) {
     const i = this.bestPlot(p, u.stored.def);
     if (i === null) return;
-    p.plots[i].crop = this.makeCrop(u.stored.def);
+    this.plant(p, i, u.stored.def);
     this.say('seedmakerPlant', { crop: u.stored.def, plot: p.plots[i].def });
     u.stored = null;
     u.armed = false;
@@ -448,7 +461,9 @@ export class Game {
     if (fert) coins += 1;
     const bonus = !!plot.def && plot.def.circles.includes(circlesOf(crop.def));
     const extra = bonus ? plot.def.bonus : 0;
-    this.statsOf(p).harvested++;
+    const st = this.statsOf(p);
+    st.harvested++;
+    if (st.turns - (crop.planted ?? 0) > 5) st.dusty = true;
     this.gain(p, coins + extra, { key: 'why.harvest', params: { how: why, crop: crop.def, fert, plot: bonus } },
       { crops: coins, plots: extra });
 
@@ -467,7 +482,8 @@ export class Game {
     const u = this.player.upgrades.find((x) => x.uid === upgradeUid);
     if (u && !u.stored) {
       u.stored = pr.crop;
-      u.armed = false; // se replanta a partir del próximo turno
+      u.armed = false;
+      this.markUsed(u); // se replanta a partir del próximo turno
       this.say('store', { crop: pr.crop.def, upgrade: u.def });
     } else {
       this.market.seedDiscard.push(pr.crop.def);
@@ -677,12 +693,13 @@ export class Game {
     const free = this.freePlots(p);
     if (free.length === 0) {
       p.warehouse.push(def);
+      this.markUsed(this.findUpgrade(p, 'warehouse'));
       this.say('toWarehouse', { seed: def });
       if (source === 'assorted') this.market.assortedReveal = null;
       return;
     }
     if (free.length === 1 && !alwaysAsk) {
-      p.plots[free[0]].crop = this.makeCrop(def);
+      this.plant(p, free[0], def);
       return;
     }
     this.prompts.push({ type: 'choosePlot', seed: def, options: free, source });
@@ -705,6 +722,7 @@ export class Game {
     const u = this.findUpgrade(p, 'assorted');
     const def = this.drawFrom('seedDeck', 'seedDiscard');
     p.coins -= u.def.cost ?? 1;
+    this.markUsed(u);
     this.say('assorted', { name: p.name, seed: def });
     // Se muestra bajo el mazo hasta colocarla o guardarla en el almacén
     this.market.assortedReveal = def;
@@ -741,7 +759,7 @@ export class Game {
     if (!pr || pr.type !== 'choosePlot' || !pr.options.includes(plotIndex)) return;
     this.prompts.shift();
     const p = this.player;
-    p.plots[plotIndex].crop = this.makeCrop(pr.seed);
+    this.plant(p, plotIndex, pr.seed);
     if (pr.source === 'warehouse') {
       p.warehouse.splice(pr.storedIndex, 1);
       this.say('plantStored', { name: p.name, seed: pr.seed });
@@ -760,6 +778,7 @@ export class Game {
     if (!this.canStoreAssorted()) return;
     const pr = this.prompts.shift();
     this.player.warehouse.push(pr.seed);
+    this.markUsed(this.findUpgrade(this.player, 'warehouse'));
     this.market.assortedReveal = null;
     this.say('toWarehouse', { seed: pr.seed });
     this.afterPrompt();
@@ -771,6 +790,7 @@ export class Game {
     const def = this.market.tools[i];
     this.market.tools[i] = null;
     p.coins -= def.cost;
+    this.statsOf(p).toolsBought++;
     this.say('buy', { name: p.name, card: def, cost: def.cost });
     const opts = this.toolReplaceOptions(p, def);
     if (opts.length === 1) this.replaceStarter(p, opts[0], def);

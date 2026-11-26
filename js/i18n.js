@@ -290,6 +290,10 @@ const DICT = {
     'title.wheatness': 'El tesTrigo',
     'title.withered': 'Marchito',
     'title.youAnimal': '¡Serás animal!',
+    'title.plotOfLand': 'Antes todo esto era campo',
+    'title.forgotten': 'Olvidado',
+    'title.gatheringDust': 'Cogiendo polvo',
+    'title.ironY': '¡Hierrejía!',
     'titleDesc.efficientFarmer': 'Menos riegos y cosechas desperdiciados',
     'titleDesc.recklessMiner': 'Más veces en la mina sin llevarse nada',
     'titleDesc.naturalMiner': 'Más monedas de la mina en un solo turno',
@@ -304,6 +308,10 @@ const DICT = {
     'titleDesc.wheatness': 'Acabar la partida con el trigo inicial sin cosechar',
     'titleDesc.withered': 'Acabar la partida sin haber cosechado ningún cultivo',
     'titleDesc.youAnimal': 'Acabar la partida con todos los animales: vacas, cerdos, ovejas, gallinas y perro y gato',
+    'titleDesc.plotOfLand': 'Conseguir las 4 parcelas extra',
+    'titleDesc.forgotten': 'Acabar la partida con una semilladora, encurtidora, parcela extra, semillas varias o almacén sin haberla usado nunca',
+    'titleDesc.gatheringDust': 'Cosechar un cultivo que llevaba plantado más de 5 turnos',
+    'titleDesc.ironY': 'Ganar la partida sin comprar nada en la herrería',
   },
 
   en: {
@@ -561,6 +569,10 @@ const DICT = {
     'title.wheatness': 'The Wheatness',
     'title.withered': 'Withered',
     'title.youAnimal': 'You animal!',
+    'title.plotOfLand': 'A (P)lot of land',
+    'title.forgotten': 'Forgotten',
+    'title.gatheringDust': 'Gathering dust',
+    'title.ironY': 'The iron-y',
     'titleDesc.efficientFarmer': 'Fewest watering and harvesting points wasted',
     'titleDesc.recklessMiner': 'Most trips to the mine that came back empty',
     'titleDesc.naturalMiner': 'Most coins from the mine in a single turn',
@@ -575,6 +587,10 @@ const DICT = {
     'titleDesc.wheatness': 'End the game with your starting wheat still unharvested',
     'titleDesc.withered': 'End the game without harvesting a single crop',
     'titleDesc.youAnimal': 'End the game with every animal: cows, pigs, sheep, hens and dog/cat',
+    'titleDesc.plotOfLand': 'Get all 4 extra plots',
+    'titleDesc.forgotten': 'End the game with a seed maker, pickler, extra plot, assorted seeds or warehouse you never used',
+    'titleDesc.gatheringDust': 'Harvest a crop that had been planted for more than 5 turns',
+    'titleDesc.ironY': 'Win the game without buying anything from the blacksmith',
   },
 };
 
